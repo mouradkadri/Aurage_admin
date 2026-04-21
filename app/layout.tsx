@@ -9,24 +9,24 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: 'Aurage Admin Dashboard',
-  description: 'E-commerce admin dashboard for car fragrance business',
-  generator: 'v0.app',
+  description: 'E-commerce admin dashboard for aurage',
+  generator: 'Aurage',
   icons: {
     icon: [
       {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
+        url: '/dashoard.png',
+        media: 'dashoard.png',
       },
       {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
+        url: '/dashoard.png',
+        media: 'dashoard.png',
       },
       {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/dashoard.png',
+        type: 'dashoard.png',
       },
     ],
-    apple: '/apple-icon.png',
+    apple: 'dashoard.png',
   },
 }
 
