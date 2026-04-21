@@ -235,7 +235,10 @@ const OrderDetailsSheet: React.FC<{
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">
                     {order.customer?.first_name || 'Guest'} {order.customer?.last_name || ''}
                   </p>
-                  <p className="text-xs text-gray-600 dark:text-zinc-400">{order.customer?.email || 'No email'}</p>
+                 <p className="text-xs text-gray-600 dark:text-zinc-400">{order.customer?.phone}</p>
+{order.customer?.email && (
+  <p className="text-xs text-gray-600 dark:text-zinc-400">{order.customer.email}</p>
+)}
                 </div>
               </div>
 
@@ -247,8 +250,8 @@ const OrderDetailsSheet: React.FC<{
                 <div className="flex items-start gap-2 text-sm text-gray-900 dark:text-white">
                   <MapPin className="w-4 h-4 text-gray-600 dark:text-zinc-400 mt-0.5 flex-shrink-0" />
                   <p>
-                    {order.shipping_address?.street || 'N/A'}, {order.shipping_address?.city || 'N/A'}, {order.shipping_address?.state || 'N/A'} {order.shipping_address?.zip || ''}
-                  </p>
+  {order.shipping_address?.street || 'N/A'}, {order.shipping_address?.city || 'N/A'}, {order.shipping_address?.governorate || order.shipping_address?.state || 'N/A'}
+</p>
                 </div>
               </div>
 
@@ -290,7 +293,7 @@ const OrderDetailsSheet: React.FC<{
                               )}
                             </TableCell>
                             <TableCell className="text-center text-sm">{item.quantity || 0}</TableCell>
-                            <TableCell className="text-right text-sm">€{(item.price_at_purchase || 0).toFixed(2)}</TableCell>
+                            <TableCell className="text-right text-sm">DT{(item.price_at_purchase || 0).toFixed(2)}</TableCell>
                           </TableRow>
                         ))
                       )}
@@ -303,7 +306,7 @@ const OrderDetailsSheet: React.FC<{
               <div className="bg-gray-50 dark:bg-zinc-900/50 rounded-lg p-4 space-y-2">
                 <div className="flex justify-between text-lg font-bold text-gray-900 dark:text-white">
                   <span>Total Amount</span>
-                  <span>€{(order.total_amount || 0).toFixed(2)}</span>
+                  <span>DT{(order.total_amount || 0).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -614,7 +617,7 @@ export const OrdersSection = () => {
                         <StatusBadge status={order.status} />
                       </TableCell>
                       <TableCell className="text-right text-sm font-semibold py-3">
-                        €{(order.total_amount || 0).toFixed(2)}
+                        DT{(order.total_amount || 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   ))
