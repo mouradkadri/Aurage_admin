@@ -12,6 +12,8 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetHeader } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
+import { IntigoShippingPanel } from './IntigoShippingPanel';
+
 import {
   ChevronLeft, ChevronRight, Printer, MapPin, CheckCircle2, Search, Filter,
   Truck, CheckCircle, RotateCcw, AlertCircle
@@ -228,7 +230,15 @@ const OrderDetailsSheet: React.FC<{
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase">Order Status</p>
-                  <StatusBadge status={order.status} />
+                  <div className="flex items-center gap-2">
+      <StatusBadge status={order.status} />
+      {/* NEW: Delivery method badge */}
+      {order.delivery_method === 'intigo' && (
+        <span className="px-2 py-1 rounded text-xs font-medium bg-purple-500/10 border border-purple-500/20 text-purple-600">
+          Intigo
+        </span>
+      )}
+    </div>
                 </div>
                 <div className="space-y-1 border-l border-gray-200 dark:border-zinc-800 pl-4">
                   <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase">Customer</p>
@@ -342,6 +352,28 @@ const OrderDetailsSheet: React.FC<{
                   )}
                 </div>
               </div>
+<Separator className="bg-gray-200 dark:bg-zinc-800" />
+
+{/* NEW: Intigo Delivery Panel */}
+<IntigoShippingPanel
+  orderId={order._id}
+  orderStatus={order.status}
+  deliveryMethod={order.delivery_method}
+  intigo={order.intigo}
+  onShipped={() => {
+    // Refresh the order details to show the updated Intigo status
+    fetchOrders({
+      page: page,
+      limit: 10,
+      status: statusFilter,
+      searchTerm: searchTerm.trim() !== '' ? searchTerm : undefined,
+    });
+    // Also refresh the detail view
+    if (order._id) fetchOrderDetails(order._id);
+  }}
+/>
+
+<Separator className="bg-gray-200 dark:bg-zinc-800" />
 
               {/* Internal Notes & Actions */}
               <div>
@@ -614,8 +646,15 @@ export const OrdersSection = () => {
                         {order.created_at ? new Date(order.created_at).toLocaleDateString() : 'N/A'}
                       </TableCell>
                       <TableCell className="py-3">
-                        <StatusBadge status={order.status} />
-                      </TableCell>
+  <div className="flex items-center gap-1.5">
+    <StatusBadge status={order.status} />
+    {order.delivery_method === 'intigo' && (
+      <span className="w-5 h-5 rounded flex items-center justify-center bg-purple-100 dark:bg-purple-900/30" title={`Intigo: ${order.intigo?.status_label || 'Pending'}`}>
+        <Truck className="w-3 h-3 text-purple-500" />
+      </span>
+    )}
+  </div>
+</TableCell>
                       <TableCell className="text-right text-sm font-semibold py-3">
                         DT{(order.total_amount || 0).toFixed(2)}
                       </TableCell>

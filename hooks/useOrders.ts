@@ -40,6 +40,16 @@ export interface Order {
     zip: string;
   };
   status: 'pending' | 'printed' | 'shipped' | 'delivered' | 'cancelled';
+  delivery_method?: 'self' | 'intigo';
+  intigo?: {
+    nid: string | null;
+    status_code: number | null;
+    status_label: string | null;
+    event_type: string | null;
+    shipped_at: string | null;
+    delivered_at: string | null;
+    returned_at: string | null;
+  };
   created_at: string;
   updated_at: string;
 }
