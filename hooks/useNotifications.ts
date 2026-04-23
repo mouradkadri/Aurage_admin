@@ -21,6 +21,8 @@ export function useNotifications() {
   const [error, setError]                 = useState(false);
   const [hasMore, setHasMore]             = useState(false);
   const [page, setPage]                   = useState(1);
+  const retryCount = useRef(0);
+  const retryTimeout = useRef<NodeJS.Timeout | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   // ── Initial fetch ─────────────────────────────────────────────────────────
@@ -44,33 +46,69 @@ export function useNotifications() {
     }
   }, []);
 
-  // ── SSE — proxy now handles text/event-stream without buffering ───────────
+  // ── SSE with exponential backoff ──────────────────────────────────────────
   useEffect(() => {
     fetchNotifications();
 
-    const es = new EventSource('/api/proxy/notifications/stream');
-    eventSourceRef.current = es;
+    let unmounted = false;
 
-    es.onopen = () => {
-      console.log('[SSE] Connected');
-    };
+    function connectSSE() {
+      if (unmounted) return;
 
-    es.onmessage = (event) => {
-      try {
-        const newNotif: Notification = JSON.parse(event.data);
-        setNotifications(prev => [newNotif, ...prev]);
-        setUnreadCount(prev => prev + 1);
-      } catch {
-        // malformed event — ignore
+      // Clean up any existing connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
-    };
 
-    es.onerror = () => {
-      console.warn('[SSE] Connection lost, browser will retry...');
-    };
+      const es = new EventSource('/api/proxy/notifications/stream');
+      eventSourceRef.current = es;
+
+      es.onopen = () => {
+        console.log('[SSE] Connected');
+        retryCount.current = 0; // Reset backoff on successful connection
+      };
+
+      es.onmessage = (event) => {
+        try {
+          const newNotif: Notification = JSON.parse(event.data);
+          setNotifications(prev => [newNotif, ...prev]);
+          setUnreadCount(prev => prev + 1);
+        } catch {
+          // malformed event — ignore
+        }
+      };
+
+      es.onerror = () => {
+        es.close();
+        eventSourceRef.current = null;
+
+        if (unmounted) return;
+
+        // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
+        const delay = Math.min(2000 * Math.pow(2, retryCount.current), 30000);
+        retryCount.current += 1;
+
+        console.warn(`[SSE] Connection lost. Reconnecting in ${delay / 1000}s...`);
+
+        retryTimeout.current = setTimeout(() => {
+          if (!unmounted) connectSSE();
+        }, delay);
+      };
+    }
+
+    connectSSE();
 
     return () => {
-      es.close();
+      unmounted = true;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (retryTimeout.current) {
+        clearTimeout(retryTimeout.current);
+        retryTimeout.current = null;
+      }
     };
   }, [fetchNotifications]);
 

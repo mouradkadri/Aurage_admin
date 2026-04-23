@@ -346,14 +346,24 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
         {/* Pickup Address */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-gray-700 dark:text-zinc-300">Pickup Address *</label>
+          {pickupAddresses.length === 0 && !loadingPickup && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              No pickup addresses found. Configure one in the Intigo dashboard first.
+            </p>
+          )}
           <Select value={selectedPickupIndex} onValueChange={setSelectedPickupIndex}>
             <SelectTrigger className="text-sm">
               <SelectValue placeholder={loadingPickup ? 'Loading...' : 'Select pickup point'} />
             </SelectTrigger>
             <SelectContent>
-              {pickupAddresses.map((p, i) => (
-                <SelectItem key={i} value={i.toString()}>
-                  {p.name || p.address || `Pickup #${i}`}
+              {pickupAddresses.map((p) => (
+                <SelectItem key={p.index} value={p.index.toString()}>
+                  <div className="flex flex-col">
+                    <span className="font-medium">{p.name}</span>
+                    {p.address && (
+                      <span className="text-xs text-gray-500">{p.address}{p.city ? `, ${p.city}` : ''}</span>
+                    )}
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>

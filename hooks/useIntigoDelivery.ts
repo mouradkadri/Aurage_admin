@@ -121,8 +121,34 @@ export function useIntigoDelivery() {
     try {
       const res = await fetch('/api/proxy/delivery/intigo/pickup-addresses');
       const data = await res.json();
-      if (data.success) {
-        setPickupAddresses(Array.isArray(data.data) ? data.data : []);
+      console.log('[Intigo] Raw pickup response:', JSON.stringify(data, null, 2));
+
+      if (data.success && data.data) {
+        // Intigo may return { pickup_addresses: [...] } or just an array
+        let addresses: any[] = [];
+        if (Array.isArray(data.data)) {
+          addresses = data.data;
+        } else if (data.data.pickup_addresses && Array.isArray(data.data.pickup_addresses)) {
+          addresses = data.data.pickup_addresses;
+        } else if (typeof data.data === 'object') {
+          // Try to find any array value inside the response
+          const arrayKey = Object.keys(data.data).find(k => Array.isArray(data.data[k]));
+          if (arrayKey) {
+            addresses = data.data[arrayKey];
+          }
+        }
+
+        // Normalize each address to a consistent shape
+        const normalized = addresses.map((addr: any, idx: number) => ({
+          index: addr.index ?? addr.pickup_index ?? idx,
+          name: addr.name || addr.label || addr.contact_name || `${addr.district_name || addr.city_name || 'Pickup'} — #${addr.index ?? idx}`,
+          address: addr.street_address || addr.address || addr.full_address || addr.street || '',
+          city: addr.city_name || addr.city || '',
+          raw: addr,
+        }));
+
+        console.log('[Intigo] Normalized pickup addresses:', normalized);
+        setPickupAddresses(normalized);
       }
     } catch (err: any) {
       setError('Failed to load pickup addresses');
@@ -236,6 +262,8 @@ export function useIntigoDelivery() {
     // Error
     error,
     setError,
+
+    // Actions
     fetchCities,
     fetchDistricts,
     fetchNeighborhoods,
