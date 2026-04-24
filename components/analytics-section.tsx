@@ -376,7 +376,9 @@ const SalesOverTimeChart: React.FC<{
           )}
         </div>
       </CardContent>
+      
     </Card>
+    
   );
 };
 

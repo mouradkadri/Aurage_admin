@@ -36,6 +36,9 @@ export interface Order {
     street: string;
     city: string;
     governorate?: string;
+    governorate_id?: number;
+    district?: string;
+    district_id?: number;
     state: string;
     zip: string;
   };
@@ -54,173 +57,171 @@ export interface Order {
   updated_at: string;
 }
 
-interface FetchOrdersParams {
-  page?: number;
-  limit?: number;
-  status?: string;
-  orderId?: string;
-  searchTerm?: string;
-  email?: string;
+// ─── Delivery filter values accepted by the backend ───────────────────────────
+export type DeliveryFilter =
+  | 'all'
+  | 'self'
+  | 'intigo'
+  | 'intigo_api'
+  | 'intigo_excel';
 
-startDate?: string;
-  endDate?: string;
+interface FetchOrdersParams {
+  page?:            number;
+  limit?:           number;
+  status?:          string;
+  delivery_method?: DeliveryFilter;
+  searchTerm?:      string;
+  startDate?:       string;
+  endDate?:         string;
 }
 
+// ─── Stats shape returned by /api/orders/stats ───────────────────────────────
+export interface OrderStats {
+  pending:   number;
+  printed:   number;
+  shipped:   number;
+  delivered: number;
+  cancelled: number;
+  delivery: {
+    self:          number;
+    intigo:        number;  // total intigo
+    intigo_api:    number;  // subset: shipped via Intigo API (has NID)
+    intigo_excel:  number;  // subset: dispatched via Excel (no NID)
+  };
+}
+
+const DEFAULT_STATS: OrderStats = {
+  pending: 0, printed: 0, shipped: 0, delivered: 0, cancelled: 0,
+  delivery: { self: 0, intigo: 0, intigo_api: 0, intigo_excel: 0 },
+};
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
 export const useOrders = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders]           = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<{ order: Order; history: OrderHistoryLog[] } | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading]     = useState(false);
   const [totalOrders, setTotalOrders] = useState(0);
-  const [pagination, setPagination] = useState({ currentPage: 1, totalPages: 1 });
-   const [stats, setStats] = useState({
-    pending: 0,
-    printed: 0,
-    shipped: 0,
-    delivered: 0,
-    cancelled: 0
-  });
+  const [pagination, setPagination]   = useState({ currentPage: 1, totalPages: 1 });
+  const [stats, setStats]             = useState<OrderStats>(DEFAULT_STATS);
 
-
-  // --- 1. FETCH PAGINATED ORDERS ---
+  // ── 1. Fetch paginated orders ───────────────────────────────────────────
   const fetchOrders = useCallback(async (params: FetchOrdersParams = {}) => {
-  setIsLoading(true);
-  try {
-    const query = new URLSearchParams();
-    if (params.page) query.append('page', params.page.toString());
-    if (params.limit) query.append('limit', params.limit.toString());
-    if (params.status && params.status !== 'all') query.append('status', params.status);
-    
-    // Send generic search string to backend
-    if (params.searchTerm) query.append('search', params.searchTerm);
+    setIsLoading(true);
+    try {
+      const query = new URLSearchParams();
+      if (params.page)            query.append('page',            params.page.toString());
+      if (params.limit)           query.append('limit',           params.limit.toString());
+      if (params.status && params.status !== 'all')
+                                  query.append('status',          params.status);
+      if (params.delivery_method && params.delivery_method !== 'all')
+                                  query.append('delivery_method', params.delivery_method);
+      if (params.searchTerm)      query.append('search',          params.searchTerm);
+      if (params.startDate)       query.append('startDate',       params.startDate);
+      if (params.endDate)         query.append('endDate',         params.endDate);
 
-    const res = await fetch(`/api/proxy/orders?${query.toString()}`);
-    if (!res.ok) throw new Error('Search failed');
+      const res  = await fetch(`/api/proxy/orders?${query.toString()}`);
+      if (!res.ok) throw new Error('Fetch failed');
 
-    const data = await res.json();
-    if (data.success) {
-      setOrders(data.data);
-      setTotalOrders(data.total);
-      setPagination({
-        currentPage: data.pagination.current_page,
-        totalPages: data.pagination.total_pages,
-      });
+      const data = await res.json();
+      if (data.success) {
+        setOrders(data.data);
+        setTotalOrders(data.total);
+        setPagination({
+          currentPage: data.pagination.current_page,
+          totalPages:  data.pagination.total_pages,
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      setOrders([]);
+    } finally {
+      setIsLoading(false);
     }
-  } catch (err) {
-    console.error(err);
-    setOrders([]); // Clear results on error
-  } finally {
-    setIsLoading(false);
-  }
-}, []);
+  }, []);
 
-
-  // --- 2. FETCH SINGLE ORDER DETAILS ---
+  // ── 2. Fetch single order details ───────────────────────────────────────
   const fetchOrderDetails = async (id: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/proxy/orders/${id}`);
+      const res  = await fetch(`/api/proxy/orders/${id}`);
       const data = await res.json();
-      if (data.success) {
-        setSelectedOrder(data.data);
-      }
+      if (data.success) setSelectedOrder(data.data);
     } catch (err) {
-      console.error("Failed to fetch order details:", err);
+      console.error('Failed to fetch order details:', err);
     } finally {
       setIsLoading(false);
     }
   };
+
+  // ── 3. Update order status ──────────────────────────────────────────────
+  const updateOrderStatus = async (id: string, status: string, note?: string): Promise<boolean> => {
+    try {
+      const res  = await fetch(`/api/proxy/orders/${id}/status`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ status, note }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (selectedOrder?.order._id === id) await fetchOrderDetails(id);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to update status:', err);
+      return false;
+    }
+  };
+
+  // ── 4. Add note ─────────────────────────────────────────────────────────
   const addOrderNote = async (id: string, note: string): Promise<boolean> => {
-    // Don't send requests for empty notes
-    if (!note || !note.trim()) {
-      return true; // Consider it a "success" as there's nothing to do
-    }
-
+    if (!note?.trim()) return true;
     try {
-      const res = await fetch(`/api/proxy/orders/${id}/notes`, {
-        method: 'POST',
+      const res  = await fetch(`/api/proxy/orders/${id}/notes`, {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note }),
+        body:    JSON.stringify({ note }),
       });
-
       const data = await res.json();
       if (data.success) {
-        // Refresh the details to show the new note in the timeline
-        if (selectedOrder?.order._id === id) {
-          await fetchOrderDetails(id);
-        }
+        if (selectedOrder?.order._id === id) await fetchOrderDetails(id);
         return true;
       }
       return false;
     } catch (err) {
-      console.error("Failed to add note:", err);
+      console.error('Failed to add note:', err);
       return false;
     }
   };
 
-  // --- 3. UPDATE ORDER STATUS ---
-  /**
-   * @param id Order ID
-   * @param status The new status
-   * @param note Optional reason or internal note
-   */
- const updateOrderStatus = async (id: string, status: string, note?: string) => {
+  // ── 5. Fetch stats ──────────────────────────────────────────────────────
+  const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`/api/proxy/orders/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, note }),
-      });
-
+      const res  = await fetch('/api/proxy/orders/stats');
       const data = await res.json();
-      if (data.success) {
-        // ✅ REMOVED the fetchOrders call from here. 
-        // The UI component will now handle the refresh using handleStatusUpdate.
-        
-        if (selectedOrder?.order._id === id) {
-          await fetchOrderDetails(id);
-        }
-        return true;
-      }
-      return false;
+      if (data.success) setStats(data.data);
     } catch (err) {
-      console.error("Failed to update status:", err);
-      return false;
-    }
-  };
- const fetchStats = useCallback(async () => {
-    try {
-      const res = await fetch('/api/proxy/orders/stats');
-      const data = await res.json();
-      if (data.success) {
-        setStats(data.data);
-      }
-    } catch (err) {
-      console.error("Failed to fetch stats:", err);
+      console.error('Failed to fetch stats:', err);
     }
   }, []);
 
-  // Update fetchOrders to also trigger a stats refresh 
-  // so KPIs update when you change an order status
-  const fetchOrdersWithStats = useCallback(async (params) => {
-    await fetchOrders(params);
-    await fetchStats();
+  // ── Combined fetch (orders + stats in parallel) ─────────────────────────
+  const fetchOrdersWithStats = useCallback(async (params: FetchOrdersParams) => {
+    await Promise.all([fetchOrders(params), fetchStats()]);
   }, [fetchOrders, fetchStats]);
-  // Initial load
-  //useEffect(() => {
-   // fetchOrders({ page: 1, limit: 10 });
-  //}, [fetchOrders]);
 
   return {
     orders,
     selectedOrder,
     isLoading,
     totalOrders,
-    addOrderNote,
     pagination,
     stats,
-    fetchOrders: fetchOrdersWithStats,
+    fetchOrders:      fetchOrdersWithStats,
     fetchOrderDetails,
     updateOrderStatus,
-    setSelectedOrder, // Useful for closing modals
+    addOrderNote,
+    setSelectedOrder,
   };
 };
