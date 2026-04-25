@@ -17,7 +17,7 @@ import { IntigoShippingPanel } from './IntigoShippingPanel';
 import {
   ChevronLeft, ChevronRight, Printer, MapPin, CheckCircle2, Search,
   Truck, CheckCircle, RotateCcw, AlertCircle, FileDown, Loader2, Filter,
-  Package,FileSpreadsheet,
+  Package, FileSpreadsheet,
 } from 'lucide-react';
 import { useOrders, Order, OrderHistoryLog, DeliveryFilter, OrderStats } from '@/hooks/useOrders';
 
@@ -41,20 +41,76 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
-/**
- * Inline Intigo status chip shown in the table row.
- * Displays the live status_label from Intigo with appropriate colour,
- * or a static "Via Excel" label for orders dispatched without the API.
- */
+// ─── Shared Excel-dispatch helper ─────────────────────────────────────────────
+
+function isIntigoExcelOrder(order: Pick<Order, 'delivery_method' | 'intigo'>): boolean {
+  return (
+    order.delivery_method === 'intigo' &&
+    !order.intigo?.nid &&
+    (order.intigo?.event_type === 'excel_dispatched' || !!order.intigo?.shipped_at)
+  );
+}
+
+// ─── IntigoStatusChip ─────────────────────────────────────────────────────────
+//
+// Three variants:
+//
+//   isApi  = true  → always-visible purple "Intigo API · NID" chip
+//                    + optional grey sub-label line (status from Intigo)
+//   isExcel = true → emerald "Via Excel" chip
+//   neither        → nothing
+//
+// The API chip is unconditional — it never depends on status_label being set,
+// so it persists even on the first render after shipping when label is null.
+// ─────────────────────────────────────────────────────────────────────────────
 const IntigoStatusChip = ({
+  isApi,
+  nid,
   label,
   eventType,
   isExcel,
 }: {
+  isApi?: boolean;
+  nid?: string | null;
   label?: string | null;
   eventType?: string | null;
   isExcel?: boolean;
 }) => {
+  if (isApi) {
+    const subLabelColor: Record<string, string> = {
+      pickup_pending:   'text-amber-600 dark:text-amber-400',
+      pending_delivery: 'text-blue-600 dark:text-blue-400',
+      in_depot:         'text-blue-600 dark:text-blue-400',
+      in_transit:       'text-purple-600 dark:text-purple-400',
+      out_for_delivery: 'text-indigo-600 dark:text-indigo-400',
+      delivered:        'text-green-600 dark:text-green-400',
+      return_pending:   'text-orange-600 dark:text-orange-400',
+      returned:         'text-red-600 dark:text-red-400',
+      cancelled:        'text-red-600 dark:text-red-400',
+    };
+
+    return (
+      <div className="flex flex-col gap-0.5">
+        {/* Primary chip — always shown for API orders */}
+        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-800/50">
+          <Truck className="w-2.5 h-2.5 flex-shrink-0" />
+          Intigo API
+          {nid && (
+            <span className="ml-1 font-mono opacity-70">
+              · {nid.slice(-6).toUpperCase()}
+            </span>
+          )}
+        </span>
+        {/* Sub-label — shown only when Intigo has set a status */}
+        {label && (
+          <span className={`text-[10px] pl-1 ${subLabelColor[eventType ?? ''] ?? 'text-gray-500 dark:text-zinc-500'}`}>
+            {label}
+          </span>
+        )}
+      </div>
+    );
+  }
+
   if (isExcel) {
     return (
       <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800/50">
@@ -64,27 +120,7 @@ const IntigoStatusChip = ({
     );
   }
 
-  if (!label) return null;
-
-  const colorMap: Record<string, string> = {
-    pickup_pending:   'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/50',
-    pending_delivery: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/50',
-    in_depot:         'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/50',
-    in_transit:       'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-800/50',
-    out_for_delivery: 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-800/50',
-    delivered:        'bg-green-100 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800/50',
-    return_pending:   'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800/50',
-    returned:         'bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800/50',
-    cancelled:        'bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800/50',
-  };
-  const cls = colorMap[eventType ?? ''] ?? 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700';
-
-  return (
-    <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}`}>
-      <Truck className="w-2.5 h-2.5 flex-shrink-0" />
-      {label}
-    </span>
-  );
+  return null;
 };
 
 // ─── Delivery Stats Card ──────────────────────────────────────────────────────
@@ -120,7 +156,7 @@ const DeliveryStatsCard = ({
     {
       key:      'intigo_api',
       label:    'Intigo API',
-      sublabel: 'Suivi en temps réel',
+      sublabel: 'Avec NID',
       count:    stats.delivery.intigo_api,
       icon:     Truck,
       color:    'text-indigo-600 dark:text-indigo-400',
@@ -179,7 +215,7 @@ const DeliveryStatsCard = ({
   );
 };
 
-// ─── Invoice PDF (unchanged from original) ────────────────────────────────────
+// ─── Invoice PDF ──────────────────────────────────────────────────────────────
 
 async function loadPdfLibs() {
   const [jsPDFModule, autoTableModule] = await Promise.all([
@@ -394,7 +430,16 @@ const BulkActionBar: React.FC<{
 };
 
 // ─── Order Details Sheet ──────────────────────────────────────────────────────
-
+//
+// Receives two refresh callbacks:
+//
+//   onRefresh      — normal refresh, keeps current filters (status updates,
+//                    notes, print invoice, Excel export)
+//   onShipRefresh  — called after a successful Intigo API ship; resets
+//                    statusFilter to 'all' so the newly-shipped order (now
+//                    status='shipped') stays visible instead of disappearing
+//                    from a 'pending'/'printed' filtered view
+// ─────────────────────────────────────────────────────────────────────────────
 const OrderDetailsSheet: React.FC<{
   selectedData: { order: Order; history: OrderHistoryLog[] } | null;
   open: boolean;
@@ -402,33 +447,23 @@ const OrderDetailsSheet: React.FC<{
   isLoadingDetails: boolean;
   onUpdateStatus: (id: string, status: string, note?: string) => Promise<boolean>;
   onAddNote: (id: string, note: string) => Promise<boolean>;
-  fetchOrders: (params: any) => void;
-  searchTerm: string;
-  statusFilter: string;
-  deliveryFilter: DeliveryFilter;
-  page: number;
+  onRefresh: () => void;
+  onShipRefresh: () => void;
 }> = ({
   selectedData, open, onOpenChange, isLoadingDetails,
-  onUpdateStatus, onAddNote, fetchOrders, searchTerm, statusFilter, deliveryFilter, page,
+  onUpdateStatus, onAddNote, onRefresh, onShipRefresh,
 }) => {
-  const [notes, setNotes]         = useState('');
+  const [notes, setNotes]           = useState('');
   const [isPrinting, setIsPrinting] = useState(false);
   const order   = selectedData?.order;
   const history = selectedData?.history ?? [];
 
   useEffect(() => { setNotes(''); }, [order]);
 
-  const refresh = () => fetchOrders({
-    page, limit: 10,
-    status: statusFilter,
-    delivery_method: deliveryFilter,
-    searchTerm: searchTerm.trim() || undefined,
-  });
-
   const handleStatusUpdate = async (status: string, defaultNote?: string) => {
     if (!order) return;
     const ok = await onUpdateStatus(order._id, status, notes || defaultNote);
-    if (ok) { setNotes(''); refresh(); }
+    if (ok) { setNotes(''); onRefresh(); }
   };
 
   const handleSheetClose = (isOpen: boolean) => {
@@ -479,14 +514,18 @@ const OrderDetailsSheet: React.FC<{
                 <div className="space-y-3">
                   <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase">Statut</p>
                   <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <StatusBadge status={order.status} />
-                    </div>
-                    {/* Delivery method chip */}
+                    <StatusBadge status={order.status} />
                     {order.delivery_method === 'intigo' && (
                       order.intigo?.nid
-                        ? <IntigoStatusChip label={order.intigo.status_label} eventType={order.intigo.event_type} />
-                        : <IntigoStatusChip isExcel />
+                        ? <IntigoStatusChip
+                            isApi
+                            nid={order.intigo.nid}
+                            label={order.intigo.status_label}
+                            eventType={order.intigo.event_type}
+                          />
+                        : isIntigoExcelOrder(order)
+                          ? <IntigoStatusChip isExcel />
+                          : null
                     )}
                     {order.delivery_method === 'self' && (
                       <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-zinc-500">
@@ -597,13 +636,14 @@ const OrderDetailsSheet: React.FC<{
 
               <Separator className="bg-gray-200 dark:bg-zinc-800" />
 
+              {/* onShipRefresh resets statusFilter to 'all' before fetching */}
               <IntigoShippingPanel
                 orderId={order._id}
                 orderStatus={order.status}
                 deliveryMethod={order.delivery_method}
                 shippingAddress={order.shipping_address}
                 intigo={order.intigo}
-                onShipped={refresh}
+                onShipped={onShipRefresh}
               />
 
               <Separator className="bg-gray-200 dark:bg-zinc-800" />
@@ -644,10 +684,8 @@ export const OrdersSection = () => {
   const [sheetOpen, setSheetOpen]           = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
-  const [exportToast, setExportToast] = useState<string | null>(null);
+  const [exportToast, setExportToast]       = useState<string | null>(null);
 
-
-  // Centralised fetch call — always includes delivery filter
   const doFetch = useCallback((overrides: Record<string, any> = {}) => {
     fetchOrders({
       page,
@@ -659,11 +697,27 @@ export const OrdersSection = () => {
     });
   }, [fetchOrders, page, statusFilter, deliveryFilter, searchTerm]);
 
-  // Debounced re-fetch on any filter change
   useEffect(() => {
     const t = setTimeout(() => doFetch(), 400);
     return () => clearTimeout(t);
   }, [searchTerm, statusFilter, deliveryFilter, page, doFetch]);
+
+  // ── Ship refresh — resets status filter to 'all' then fetches ──────────────
+  // Called exclusively by IntigoShippingPanel.onShipped.
+  // The backend sets order.status = 'shipped' on success, so if the user was
+  // looking at pending/printed orders the row would vanish. Switching to 'all'
+  // keeps it visible with the new Intigo API chip.
+  const handleShipRefresh = useCallback(() => {
+    setStatusFilter('all');
+    setPage(1);
+    fetchOrders({
+      page: 1,
+      limit: 10,
+      status: 'all',
+      delivery_method: deliveryFilter,
+      searchTerm: searchTerm.trim() || undefined,
+    });
+  }, [fetchOrders, deliveryFilter, searchTerm]);
 
   const handleDeliveryFilterChange = (val: DeliveryFilter) => {
     setDeliveryFilter(val);
@@ -714,24 +768,23 @@ export const OrdersSection = () => {
   };
 
   const handleExportIntigo = async () => {
-  const selectedOrderObjects = orders.filter(o => selectedOrders.has(o._id));
-  if (selectedOrderObjects.length === 0) return;
- 
-  await exportIntigoExcel(selectedOrderObjects, (result) => {
-    // Build a human-readable summary
-    const parts: string[] = [];
-    if (result.exported > 0)   parts.push(`${result.exported} colis exporté${result.exported > 1 ? 's' : ''}`);
-    if (result.markedInDB > 0) parts.push(`${result.markedInDB} commande${result.markedInDB > 1 ? 's' : ''} mise${result.markedInDB > 1 ? 's' : ''} à jour`);
-    if (result.skipped > 0)    parts.push(`${result.skipped} ignorée${result.skipped > 1 ? 's' : ''} (déjà expédiées)`);
- 
-    setExportToast(parts.join(' · '));
-    setTimeout(() => setExportToast(null), 5000);
- 
-    // Deselect and refresh so the table shows updated statuses
-    setSelectedOrders(new Set());
-    doFetch();
-  });
-};
+    const selectedOrderObjects = orders.filter(o => selectedOrders.has(o._id));
+    if (selectedOrderObjects.length === 0) return;
+
+    await exportIntigoExcel(selectedOrderObjects, (result) => {
+      const parts: string[] = [];
+      if (result.exported > 0)   parts.push(`${result.exported} colis exporté${result.exported > 1 ? 's' : ''}`);
+      if (result.markedInDB > 0) parts.push(`${result.markedInDB} commande${result.markedInDB > 1 ? 's' : ''} mise${result.markedInDB > 1 ? 's' : ''} à jour`);
+      if (result.skipped > 0)    parts.push(`${result.skipped} ignorée${result.skipped > 1 ? 's' : ''} (déjà expédiées)`);
+
+      setExportToast(parts.join(' · '));
+      setTimeout(() => setExportToast(null), 5000);
+
+      setSelectedOrders(new Set());
+      doFetch();
+    });
+  };
+
   const resetFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
@@ -759,7 +812,6 @@ export const OrdersSection = () => {
         ))}
       </div>
 
-      {/* Delivery stats card — clickable, acts as filter */}
       <DeliveryStatsCard
         stats={stats}
         deliveryFilter={deliveryFilter}
@@ -769,7 +821,6 @@ export const OrdersSection = () => {
       {/* Filters row */}
       <Card className="bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800">
         <CardContent className="p-4 flex flex-col sm:flex-row gap-3">
-          {/* Search */}
           <div className="flex-1 flex items-center gap-2 bg-gray-100 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2">
             <Search className="w-4 h-4 text-gray-600" />
             <input
@@ -781,7 +832,6 @@ export const OrdersSection = () => {
             />
           </div>
 
-          {/* Status filter */}
           <div className="w-full sm:w-44">
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
               <SelectTrigger><SelectValue placeholder="Tous les statuts" /></SelectTrigger>
@@ -796,7 +846,6 @@ export const OrdersSection = () => {
             </Select>
           </div>
 
-          {/* Delivery method filter */}
           <div className="w-full sm:w-48">
             <Select value={deliveryFilter} onValueChange={(v) => { handleDeliveryFilterChange(v as DeliveryFilter); }}>
               <SelectTrigger><SelectValue placeholder="Livraison" /></SelectTrigger>
@@ -845,7 +894,7 @@ export const OrdersSection = () => {
                   </TableRow>
                 ) : orders.map((order) => {
                   const isIntigoApi   = order.delivery_method === 'intigo' && !!order.intigo?.nid;
-                  const isIntigoExcel = order.delivery_method === 'intigo' && !order.intigo?.nid;
+                  const isIntigoExcel = isIntigoExcelOrder(order);
 
                   return (
                     <TableRow
@@ -869,12 +918,13 @@ export const OrdersSection = () => {
                         {order.created_at ? new Date(order.created_at).toLocaleDateString('fr-FR') : 'N/A'}
                       </TableCell>
                       <TableCell className="py-3">
-                        {/* Internal status badge */}
                         <div className="flex flex-col gap-1">
                           <StatusBadge status={order.status} />
-                          {/* Intigo sub-status */}
+                          {/* API chip — always shown when NID exists, never depends on label */}
                           {isIntigoApi && (
                             <IntigoStatusChip
+                              isApi
+                              nid={order.intigo?.nid}
                               label={order.intigo?.status_label}
                               eventType={order.intigo?.event_type ?? undefined}
                             />
@@ -915,11 +965,8 @@ export const OrdersSection = () => {
         isLoadingDetails={isLoading && sheetOpen}
         onUpdateStatus={updateOrderStatus}
         onAddNote={addOrderNote}
-        fetchOrders={fetchOrders}
-        searchTerm={searchTerm}
-        statusFilter={statusFilter}
-        deliveryFilter={deliveryFilter}
-        page={page}
+        onRefresh={doFetch}
+        onShipRefresh={handleShipRefresh}
       />
 
       <BulkActionBar
@@ -931,14 +978,13 @@ export const OrdersSection = () => {
         onPrintInvoices={handleBulkPrintInvoices}
         onExportIntigo={handleExportIntigo}
       />
-       {exportToast && (
+
+      {exportToast && (
         <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-emerald-600 text-white text-sm font-medium px-5 py-3 rounded-lg shadow-xl animate-in slide-in-from-bottom-4">
           <FileSpreadsheet className="w-4 h-4 flex-shrink-0" />
           {exportToast}
         </div>
       )}
     </div>
-    
   );
-  
 };

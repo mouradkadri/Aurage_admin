@@ -203,7 +203,7 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
 
   // Helper for live price formatting preview
   const formattedPrice = formData.base_price 
-    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(formData.base_price))
+    ? new Intl.NumberFormat('fr-TN', { style: 'currency', currency: 'TND' }).format(Number(formData.base_price))
     : null;
 
   return (

@@ -340,7 +340,7 @@ export const ProductsSection: React.FC = () => {
               onClick={() => handleCellEdit(item._id, 'price', price)}
               className="cursor-pointer text-amber-600 dark:text-amber-400 hover:underline font-medium"
             >
-              {isProduct ? `$${price || 0}` : `+$${price || 0}`}
+              {isProduct ? `${price || 0} dt` : `+${price || 0} dt`}
             </span>
           )}
         </td>

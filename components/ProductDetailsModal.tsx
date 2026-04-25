@@ -111,7 +111,7 @@ export const ProductDetailsModal = ({ product, children }: { product: Product, c
                 </h4>
                 <div className="flex items-baseline gap-1 relative z-10">
                   <span className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                    ${product.base_price.toFixed(2)}
+                    {product.base_price.toFixed(2)} dt
                   </span>
                   <span className="text-sm font-medium text-zinc-500">USD</span>
                 </div>
