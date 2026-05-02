@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UploadCloud, X, Loader2, DollarSign, Info, Trash2, PackagePlus, Plus } from 'lucide-react';
 import { Pack } from '@/hooks/usePacks';
-import { useProducts } from '@/hooks/useProducts'; // Removed BottleVariant import
+import { useProducts } from '@/hooks/useProducts';
 
 interface PackFormDrawerProps {
   isOpen: boolean;
@@ -25,11 +25,16 @@ interface ImageItem {
   isNew: boolean;
 }
 
-// Type for managing the pack's content in the form state
 interface ContentItem {
-  // Use a temporary unique id for React keys
   tempId: string;
-  product: string; // Will store the product's _id
+  product: string; // product _id
+}
+
+// Bilingual field shape — mirrors the backend { en, fr } structure.
+// Pack bilingual fields: name, description (both { en, fr }).
+interface BilingualField {
+  en: string;
+  fr: string;
 }
 
 const DESC_MAX_LENGTH = 500;
@@ -40,127 +45,172 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
   onSubmit,
   initialData,
 }) => {
-  // Fetch all products to populate the dropdowns (Bottle variants removed)
   const { products } = useProducts();
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [imageItem, setImageItem] = useState<ImageItem | null>(null);
-  const [contentItems, setContentItems] = useState<ContentItem[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
+  const [isSubmitting, setIsSubmitting]   = useState(false);
+  const [imageItem, setImageItem]         = useState<ImageItem | null>(null);
+  const [contentItems, setContentItems]   = useState<ContentItem[]>([]);
+  const fileInputRef                      = useRef<HTMLInputElement>(null);
+
+  // ── Bilingual fields ────────────────────────────────────────────────────────
+  // name        → sent as name[en] / name[fr]
+  // description → sent as description[en] / description[fr]
+  const [name, setName]               = useState<BilingualField>({ en: '', fr: '' });
+  const [description, setDescription] = useState<BilingualField>({ en: '', fr: '' });
+
+  // ── Non-bilingual fields ────────────────────────────────────────────────────
   const [formData, setFormData] = useState({
-    name: '',
-    price: '',
-    description: '',
+    price:     '',
     is_active: true,
   });
 
-  // Effect to populate the form when it opens (for creating or editing)
+  // ── Populate form on open ──────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
+        // name and description come back from the API as { en, fr } objects.
+        // Guard against legacy data that might still be a plain string.
+        setName({
+          en: typeof initialData.name === 'object' ? (initialData.name as BilingualField).en ?? '' : initialData.name ?? '',
+          fr: typeof initialData.name === 'object' ? (initialData.name as BilingualField).fr ?? '' : '',
+        });
+        setDescription({
+          en: typeof initialData.description === 'object' ? (initialData.description as BilingualField).en ?? '' : initialData.description ?? '',
+          fr: typeof initialData.description === 'object' ? (initialData.description as BilingualField).fr ?? '' : '',
+        });
         setFormData({
-          name: initialData.name || '',
-          price: initialData.price?.toString() || '',
-          description: initialData.description || '',
+          price:     initialData.price?.toString() ?? '',
           is_active: initialData.is_active ?? true,
         });
-
-        if (initialData.image) {
-          setImageItem({ url: initialData.image.url, isNew: false });
-        } else {
-          setImageItem(null);
-        }
-
-        if (initialData.content) {
-          // Map backend content (which now only has products) to UI state
-          const initialContent = initialData.content.map(item => ({
-            tempId: Math.random().toString(36),
+        setImageItem(initialData.image ? { url: initialData.image.url, isNew: false } : null);
+        setContentItems(
+          (initialData.content ?? []).map(item => ({
+            tempId:  Math.random().toString(36),
             product: item.product._id,
-          }));
-          setContentItems(initialContent);
-        }
-
+          }))
+        );
       } else {
-        // Reset form for "Create" mode
         resetForm();
       }
     }
   }, [initialData, isOpen]);
 
   const resetForm = () => {
-    setFormData({ name: '', price: '', description: '', is_active: true });
+    setName({ en: '', fr: '' });
+    setDescription({ en: '', fr: '' });
+    setFormData({ price: '', is_active: true });
     setImageItem(null);
     setContentItems([]);
   };
 
+  // ── Image handlers ─────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
+    if (e.target.files?.[0]) {
       const file = e.target.files[0];
       setImageItem({ url: URL.createObjectURL(file), file, isNew: true });
     }
   };
 
   const removeImage = () => {
-    if (imageItem?.isNew) {
-      URL.revokeObjectURL(imageItem.url);
-    }
+    if (imageItem?.isNew) URL.revokeObjectURL(imageItem.url);
     setImageItem(null);
   };
-  
-  // --- Content Management Handlers ---
-  const addContentItem = () => {
-    // Add a new empty row for the user to select a product
-    setContentItems(prev =>[...prev, { tempId: Math.random().toString(36), product: '' }]);
-  };
 
-  const updateContentItem = (tempId: string, field: 'product', value: string) => {
-    setContentItems(prev => prev.map(item => 
-      item.tempId === tempId ? { ...item, [field]: value } : item
-    ));
-  };
-  
-  const removeContentItem = (tempId: string) => {
+  // ── Content handlers ───────────────────────────────────────────────────────
+  const addContentItem = () =>
+    setContentItems(prev => [...prev, { tempId: Math.random().toString(36), product: '' }]);
+
+  const updateContentItem = (tempId: string, value: string) =>
+    setContentItems(prev => prev.map(item => item.tempId === tempId ? { ...item, product: value } : item));
+
+  const removeContentItem = (tempId: string) =>
     setContentItems(prev => prev.filter(item => item.tempId !== tempId));
-  };
 
+  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Basic validation for content: check if a product is selected
+
     if (contentItems.some(item => !item.product)) {
-        alert("Please ensure a product is selected for every item in the pack.");
-        return;
+      alert('Please ensure a product is selected for every item in the pack.');
+      return;
     }
-    
+
     setIsSubmitting(true);
 
     const data = new FormData();
-    data.append('name', formData.name);
-    data.append('price', formData.price);
-    data.append('description', formData.description);
+
+    // Bilingual fields — sent as name[en], name[fr], description[en], description[fr]
+    // to match the multipart/form-data format the backend expects.
+    data.append('name[en]', name.en);
+    data.append('name[fr]', name.fr);
+    data.append('description[en]', description.en);
+    data.append('description[fr]', description.fr);
+
+    // Non-bilingual fields
+    data.append('price',     formData.price);
     data.append('is_active', String(formData.is_active));
 
-    // Append image file only if it's a new one
     if (imageItem?.isNew && imageItem.file) {
       data.append('image', imageItem.file);
     }
-    
-    // Stringify and append the content array (only product IDs now)
-    const finalContent = contentItems.map(({ product }) => ({ product }));
-    data.append('content', JSON.stringify(finalContent));
+
+    data.append('content', JSON.stringify(contentItems.map(({ product }) => ({ product }))));
 
     const success = await onSubmit(data);
-    if (success) {
-      onClose(); // Parent will reset the state
-    }
+    if (success) onClose();
     setIsSubmitting(false);
   };
+
+  // ── Shared bilingual input helper ──────────────────────────────────────────
+  // Renders a labelled EN + FR pair for a given bilingual field.
+  const BilingualInput = ({
+    label,
+    field,
+    setter,
+    multiline = false,
+    required  = false,
+  }: {
+    label:     string;
+    field:     BilingualField;
+    setter:    React.Dispatch<React.SetStateAction<BilingualField>>;
+    multiline?: boolean;
+    required?:  boolean;
+  }) => (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="grid grid-cols-2 gap-3">
+        {(['en', 'fr'] as const).map(locale => (
+          <div key={locale} className="space-y-1">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">
+              {locale === 'en' ? '🇬🇧 English' : '🇫🇷 Français'}
+            </span>
+            {multiline ? (
+              <Textarea
+                rows={3}
+                maxLength={DESC_MAX_LENGTH}
+                required={required && locale === 'en'}
+                value={field[locale]}
+                placeholder={locale === 'fr' ? 'Traduction française…' : ''}
+                onChange={e => setter(prev => ({ ...prev, [locale]: e.target.value }))}
+              />
+            ) : (
+              <Input
+                required={required && locale === 'en'}
+                value={field[locale]}
+                placeholder={locale === 'fr' ? 'Traduction française…' : ''}
+                onChange={e => setter(prev => ({ ...prev, [locale]: e.target.value }))}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col bg-zinc-50 dark:bg-zinc-950 border-l">
-        
+
         <SheetHeader className="px-8 py-6 border-b bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md sticky top-0 z-10">
           <SheetTitle className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
             {initialData ? 'Edit Pack' : 'Create New Pack'}
@@ -172,35 +222,57 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
 
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <form id="pack-form" onSubmit={handleSubmit} className="space-y-8">
-            
-            {/* --- General Information --- */}
+
+            {/* General Information */}
             <section className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border shadow-sm space-y-6">
-               <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-2">
                 <Info className="w-5 h-5 text-zinc-400" />
                 <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Pack Details</h3>
               </div>
-              <div>
-                <Label>Pack Name</Label>
-                <Input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
-              </div>
+
+              {/* name — bilingual */}
+              <BilingualInput
+                label="Pack Name"
+                field={name}
+                setter={setName}
+                required
+              />
+
+              {/* price — not bilingual */}
               <div>
                 <Label>Price</Label>
                 <div className="relative">
                   <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                  <Input required type="number" step="0.01" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="pl-9" />
+                  <Input
+                    required
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.price}
+                    onChange={e => setFormData({ ...formData, price: e.target.value })}
+                    className="pl-9"
+                  />
                 </div>
               </div>
-               <div>
-                <Label>Description</Label>
-                <Textarea rows={3} maxLength={DESC_MAX_LENGTH} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+
+              {/* description — bilingual */}
+              <BilingualInput
+                label="Description"
+                field={description}
+                setter={setDescription}
+                multiline
+              />
+
+              <div className="flex items-center justify-between p-4 rounded-xl border bg-zinc-50 dark:bg-zinc-950/50">
+                <Label>Make Pack Active</Label>
+                <Switch
+                  checked={formData.is_active}
+                  onCheckedChange={checked => setFormData({ ...formData, is_active: checked })}
+                />
               </div>
-               <div className="flex items-center justify-between p-4 rounded-xl border bg-zinc-50 dark:bg-zinc-950/50">
-                  <Label>Make Pack Active</Label>
-                  <Switch checked={formData.is_active} onCheckedChange={checked => setFormData({...formData, is_active: checked})} />
-               </div>
             </section>
 
-            {/* --- Pack Content --- */}
+            {/* Pack Content */}
             <section className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -213,56 +285,96 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
               </div>
 
               <div className="space-y-3">
-                {contentItems.map((item) => (
+                {contentItems.map(item => (
                   <div key={item.tempId} className="grid grid-cols-12 gap-2 items-center p-3 rounded-lg border bg-zinc-50 dark:bg-zinc-950/50">
-                    
-                    {/* Expanded column width since bottle is removed */}
                     <div className="col-span-10">
-                       <Select required value={item.product} onValueChange={(value) => updateContentItem(item.tempId, 'product', value)}>
-                          <SelectTrigger><SelectValue placeholder="Select Product..." /></SelectTrigger>
-                          <SelectContent>
-                            {products.map(p => <SelectItem key={p._id} value={p._id}>{p.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                      <Select
+                        required
+                        value={item.product}
+                        onValueChange={value => updateContentItem(item.tempId, value)}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Select Product…" /></SelectTrigger>
+                        <SelectContent>
+                          {products.map(p => (
+                            // p.name is bilingual { en, fr } — display the English name in the dropdown.
+                            // Adjust locale here if you want to show French names instead.
+                            <SelectItem key={p._id} value={p._id}>
+                              {typeof p.name === 'object' ? (p.name as { en?: string; fr?: string }).en ?? p._id : p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    
                     <div className="col-span-2 flex justify-end">
-                      <Button type="button" variant="ghost" size="icon" className="text-red-500 hover:text-red-600" onClick={() => removeContentItem(item.tempId)}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-500 hover:text-red-600"
+                        onClick={() => removeContentItem(item.tempId)}
+                      >
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
                   </div>
                 ))}
-                 {contentItems.length === 0 && <p className="text-center text-sm text-zinc-500 py-4">This pack is empty. Add a product to get started.</p>}
+                {contentItems.length === 0 && (
+                  <p className="text-center text-sm text-zinc-500 py-4">
+                    This pack is empty. Add a product to get started.
+                  </p>
+                )}
               </div>
             </section>
-            
-            {/* --- Media Upload --- */}
+
+            {/* Media */}
             <section className="bg-white dark:bg-zinc-900 rounded-2xl p-6 border shadow-sm space-y-4">
-               <h3 className="font-semibold">Pack Image</h3>
-               {!imageItem ? (
-                 <div className="relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-amber-400" onClick={() => fileInputRef.current?.click()}>
-                    <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0" />
-                    <UploadCloud className="mx-auto w-10 h-10 text-zinc-400 mb-2" />
-                    <p className="text-sm">Click to upload or drag & drop</p>
-                 </div>
-               ) : (
-                 <div className="relative w-40 h-40 rounded-lg overflow-hidden group">
-                    <img src={imageItem.url} alt="Pack preview" className="w-full h-full object-cover" />
-                    <button type="button" onClick={removeImage} className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100">
-                      <X className="w-4 h-4" />
-                    </button>
-                 </div>
-               )}
+              <h3 className="font-semibold">Pack Image</h3>
+              {!imageItem ? (
+                <div
+                  className="relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-amber-400"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0"
+                  />
+                  <UploadCloud className="mx-auto w-10 h-10 text-zinc-400 mb-2" />
+                  <p className="text-sm">Click to upload or drag &amp; drop</p>
+                </div>
+              ) : (
+                <div className="relative w-40 h-40 rounded-lg overflow-hidden group">
+                  <img src={imageItem.url} alt="Pack preview" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={removeImage}
+                    className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </section>
 
           </form>
         </div>
 
         <SheetFooter className="px-8 py-5 border-t bg-white dark:bg-zinc-950 sticky bottom-0 z-10">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
-          <Button type="submit" form="pack-form" disabled={isSubmitting} className="bg-amber-500 hover:bg-amber-600 text-white">
-            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : (initialData ? 'Save Changes' : 'Create Pack')}
+          <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="pack-form"
+            disabled={isSubmitting}
+            className="bg-amber-500 hover:bg-amber-600 text-white"
+          >
+            {isSubmitting
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : initialData ? 'Save Changes' : 'Create Pack'
+            }
           </Button>
         </SheetFooter>
 

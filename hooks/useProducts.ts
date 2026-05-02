@@ -7,16 +7,23 @@ export interface ProductImage {
   alt_text: string;
   is_primary: boolean;
 }
-
+export interface BilingualField {
+  en: string;
+  fr: string;
+}
 export interface Product {
   _id: string;
-  name: string;
-  description: string;
+  name: BilingualField;               
+  description: BilingualField;        
+  scent_description?: BilingualField; 
+  features?: BilingualField
   base_price: number;
   liquid_stock_quantity: number;
   is_active: boolean;
   slug: string;
   images: ProductImage[];
+  created_at?: string; 
+  updated_at?: string;
 }
 
 // 1. ADDED: Export the missing BottleVariant interface

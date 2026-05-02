@@ -15,6 +15,7 @@ import { Collection } from '@/hooks/useCollections';
 import { Hash, Layers, Package, Box } from 'lucide-react';
 
 export const CollectionDetailsModal = ({ collection, children }: { collection: Collection, children: React.ReactNode }) => {
+  const lang = 'fr';
   return (
     <Dialog>
       <DialogTrigger asChild>{children}</DialogTrigger>
@@ -27,7 +28,7 @@ export const CollectionDetailsModal = ({ collection, children }: { collection: C
           <DialogHeader className="relative z-10">
             <div className="flex justify-between items-start mb-2">
               <DialogTitle className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                {collection.name}
+                {collection.name?.[lang]}
               </DialogTitle>
               <Badge 
                 variant={collection.is_active ? "default" : "secondary"}
@@ -59,7 +60,7 @@ export const CollectionDetailsModal = ({ collection, children }: { collection: C
               <div className="relative aspect-[21/9] overflow-hidden rounded-3xl border border-zinc-200/50 dark:border-zinc-800/50 shadow-sm bg-zinc-100 dark:bg-zinc-900">
                 <img 
                   src={collection.image.url} 
-                  alt={collection.name} 
+                  alt={collection.description?.[lang] || "No description provided."}
                   className="h-full w-full object-cover"
                 />
               </div>
@@ -76,7 +77,7 @@ export const CollectionDetailsModal = ({ collection, children }: { collection: C
                   Description
                 </h4>
                 <p className="text-[15px] leading-relaxed text-zinc-600 dark:text-zinc-300">
-                  {collection.description || "No description provided."}
+                  {collection.description?.[lang] || "No description provided."}
                 </p>
               </section>
               
@@ -98,9 +99,9 @@ export const CollectionDetailsModal = ({ collection, children }: { collection: C
                             <Package className="w-4 h-4 text-amber-500" />
                           )}
                         </div>
-                        <div>
+                       <div>
                           <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                            {itemObj.item?.name || "Unknown Item"}
+                            {itemObj.item?.name?.[lang] || "Unknown Item"} {/* <-- Updated nested item name */}
                           </p>
                           <p className="text-[11px] text-zinc-500 font-medium">Type: {itemObj.onModel}</p>
                         </div>

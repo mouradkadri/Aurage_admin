@@ -45,11 +45,11 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
-    name: '',
+    nameEn: '', nameFr: '',
     base_price: '',
     liquid_stock_quantity: '',
-    description: '',
-    scent_description: '',
+    descriptionEn: '', descriptionFr: '',
+    scentEn: '', scentFr: '',
     is_active: true,
   });
 
@@ -58,11 +58,14 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
     if (isOpen) {
       if (initialData) {
         setFormData({
-          name: initialData.name || '',
+          nameEn: initialData.name?.en || '',
+          nameFr: initialData.name?.fr || '',
           base_price: initialData.base_price?.toString() || '',
           liquid_stock_quantity: initialData.liquid_stock_quantity?.toString() || '',
-          description: initialData.description || '',
-          scent_description: initialData.slug || '', // Using slug as per original code context
+          descriptionEn: initialData.description?.en || '',
+          descriptionFr: initialData.description?.fr || '',
+          scentEn: initialData.scent_description?.en || '',
+          scentFr: initialData.scent_description?.fr || '',
           is_active: initialData.is_active ?? true,
         });
 
@@ -95,8 +98,11 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
 
   const resetForm = () => {
     setFormData({
-      name: '', base_price: '', liquid_stock_quantity: '',
-      description: '', scent_description: '', is_active: true,
+      nameEn: '', nameFr: '', 
+      base_price: '', liquid_stock_quantity: '',
+      descriptionEn: '', descriptionFr: '', 
+      scentEn: '', scentFr: '', 
+      is_active: true,
     });
     setImageItems([]);
   };
@@ -176,11 +182,14 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
     setIsSubmitting(true);
 
     const data = new FormData();
-    data.append('name', formData.name);
+    data.append('name[en]', formData.nameEn);
+    data.append('name[fr]', formData.nameFr);
     data.append('base_price', formData.base_price);
     data.append('liquid_stock_quantity', formData.liquid_stock_quantity);
-    data.append('description', formData.description);
-    data.append('scent_description', formData.scent_description);
+    data.append('description[en]', formData.descriptionEn);
+    data.append('description[fr]', formData.descriptionFr);
+    data.append('scent_description[en]', formData.scentEn);
+    data.append('scent_description[fr]', formData.scentFr);
     data.append('is_active', String(formData.is_active));
 
     // Append new files
@@ -237,15 +246,27 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                 <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">General Information</h3>
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Product Name</Label>
-                <Input 
-                  required 
-                  value={formData.name} 
-                  onChange={e => setFormData({...formData, name: e.target.value})} 
-                  placeholder="e.g. Midnight Oud Extrait" 
-                  className="rounded-xl h-11 focus-visible:ring-amber-500 focus-visible:ring-offset-0 bg-zinc-50 dark:bg-zinc-950"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Name (FR)</Label>
+                  <Input 
+                    required 
+                    value={formData.nameFr} 
+                    onChange={e => setFormData({...formData, nameFr: e.target.value})} 
+                    placeholder="e.g. Oud de Minuit" 
+                    className="rounded-xl h-11 focus-visible:ring-amber-500 bg-zinc-50 dark:bg-zinc-950"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Name (EN)</Label>
+                  <Input 
+                    required 
+                    value={formData.nameEn} 
+                    onChange={e => setFormData({...formData, nameEn: e.target.value})} 
+                    placeholder="e.g. Midnight Oud" 
+                    className="rounded-xl h-11 focus-visible:ring-amber-500 bg-zinc-50 dark:bg-zinc-950"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -306,34 +327,59 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
 
             {/* --- Details Card --- */}
             <section className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-zinc-200/60 dark:border-zinc-800 shadow-sm space-y-6">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Main Description</Label>
-                  <span className={`text-xs ${formData.description.length > DESC_MAX_LENGTH ? 'text-red-500' : 'text-zinc-400'}`}>
-                    {formData.description.length} / {DESC_MAX_LENGTH}
-                  </span>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Description (FR)</Label>
+                    <span className={`text-xs ${formData.descriptionFr.length > DESC_MAX_LENGTH ? 'text-red-500' : 'text-zinc-400'}`}>
+                      {formData.descriptionFr.length}/{DESC_MAX_LENGTH}
+                    </span>
+                  </div>
+                  <Textarea required rows={4} maxLength={DESC_MAX_LENGTH}
+                    value={formData.descriptionFr} 
+                    onChange={e => setFormData({...formData, descriptionFr: e.target.value})} 
+                    placeholder="Description en français..." 
+                    className="rounded-xl resize-none focus-visible:ring-amber-500 bg-zinc-50 dark:bg-zinc-950"
+                  />
                 </div>
-                <Textarea 
-                  required 
-                  rows={4} 
-                  maxLength={DESC_MAX_LENGTH}
-                  value={formData.description} 
-                  onChange={e => setFormData({...formData, description: e.target.value})} 
-                  placeholder="Describe the product's character, inspiration, and feel..." 
-                  className="rounded-xl resize-none focus-visible:ring-amber-500 bg-zinc-50 dark:bg-zinc-950"
-                />
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Description (EN)</Label>
+                    <span className={`text-xs ${formData.descriptionEn.length > DESC_MAX_LENGTH ? 'text-red-500' : 'text-zinc-400'}`}>
+                      {formData.descriptionEn.length}/{DESC_MAX_LENGTH}
+                    </span>
+                  </div>
+                  <Textarea required rows={4} maxLength={DESC_MAX_LENGTH}
+                    value={formData.descriptionEn} 
+                    onChange={e => setFormData({...formData, descriptionEn: e.target.value})} 
+                    placeholder="English description..." 
+                    className="rounded-xl resize-none focus-visible:ring-amber-500 bg-zinc-50 dark:bg-zinc-950"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Scent Notes Profile</Label>
-                <Textarea 
-                  rows={2} 
-                  value={formData.scent_description} 
-                  onChange={e => setFormData({...formData, scent_description: e.target.value})} 
-                  placeholder="e.g. Top: Bergamot, Pink Pepper. Base: Vanilla, Oud." 
-                  className="rounded-xl resize-none focus-visible:ring-amber-500 bg-zinc-50 dark:bg-zinc-950"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Notes Olfactives (FR)</Label>
+                  <Textarea rows={2} 
+                    value={formData.scentFr} 
+                    onChange={e => setFormData({...formData, scentFr: e.target.value})} 
+                    placeholder="ex: Tête: Bergamote. Fond: Oud." 
+                    className="rounded-xl resize-none focus-visible:ring-amber-500 bg-zinc-50 dark:bg-zinc-950"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Scent Notes (EN)</Label>
+                  <Textarea rows={2} 
+                    value={formData.scentEn} 
+                    onChange={e => setFormData({...formData, scentEn: e.target.value})} 
+                    placeholder="e.g. Top: Bergamot. Base: Oud." 
+                    className="rounded-xl resize-none focus-visible:ring-amber-500 bg-zinc-50 dark:bg-zinc-950"
+                  />
+                </div>
               </div>
+
             </section>
 
             {/* --- Media Upload Card --- */}

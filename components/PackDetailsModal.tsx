@@ -20,6 +20,7 @@ interface PackDetailsModalProps {
 }
 
 export const PackDetailsModal: React.FC<PackDetailsModalProps> = ({ pack, children }) => {
+  const lang = 'fr';
   return (
     <Dialog>
       <DialogTrigger asChild>{children}</DialogTrigger>
@@ -32,7 +33,7 @@ export const PackDetailsModal: React.FC<PackDetailsModalProps> = ({ pack, childr
           <DialogHeader className="relative z-10">
             <div className="flex justify-between items-start mb-2">
               <DialogTitle className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                {pack.name}
+                {pack.name?.[lang]}
               </DialogTitle>
               <Badge 
                 variant={pack.is_active ? "default" : "secondary"}
@@ -64,7 +65,7 @@ export const PackDetailsModal: React.FC<PackDetailsModalProps> = ({ pack, childr
               <div className="relative aspect-[21/9] overflow-hidden rounded-3xl border border-zinc-200/50 dark:border-zinc-800/50 shadow-sm bg-zinc-100 dark:bg-zinc-900">
                 <img 
                   src={pack.image.url} 
-                  alt={pack.name} 
+                  alt={pack.name?.[lang]} 
                   className="h-full w-full object-cover"
                 />
               </div>
@@ -80,7 +81,7 @@ export const PackDetailsModal: React.FC<PackDetailsModalProps> = ({ pack, childr
                   About this Bundle
                 </h4>
                 <p className="text-[15px] leading-relaxed text-zinc-600 dark:text-zinc-300">
-                  {pack.description || "No description provided for this pack bundle."}
+                  {pack.description?.[lang] || "No description provided for this pack bundle."}
                 </p>
               </section>
 
@@ -100,7 +101,7 @@ export const PackDetailsModal: React.FC<PackDetailsModalProps> = ({ pack, childr
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                            {item.product.name}
+                            {item.product?.name?.[lang]}
                           </p>
                           <p className="text-[11px] text-zinc-500 font-medium">Quantity: {item.quantity || 1}</p>
                         </div>

@@ -14,6 +14,7 @@ import { Input } from './ui/input';
 import { PackDetailsModal } from './PackDetailsModal';
 
 export const PacksSection: React.FC = () => {
+  const lang = 'fr';
   const { packs, isLoading, createPack, updatePack, deletePack } = usePacks();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -23,9 +24,10 @@ export const PacksSection: React.FC = () => {
 
   const filteredPacks = useMemo(() => {
     return packs.filter((pack) => {
+      const searchLower = searchTerm.toLowerCase();
       const matchesSearch =
-        pack.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        pack.description.toLowerCase().includes(searchTerm.toLowerCase());
+        pack.name?.[lang]?.toLowerCase().includes(searchLower) ||
+        pack.description?.[lang]?.toLowerCase().includes(searchLower);
       const status = pack.is_active ? 'active' : 'draft';
       const matchesStatus = statusFilter === 'all' || status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -104,17 +106,7 @@ export const PacksSection: React.FC = () => {
                   ) : filteredPacks.length > 0 ? (
                     filteredPacks.map((pack) => (
                       <TableRow key={pack._id}>
-                        <TableCell>
-                          <p className="font-medium">{pack.name}</p>
-                          {/* Fixed: max-w prevents the description from stretching the column;
-                              truncate + title lets the user still read it on hover */}
-                          <p
-                            className="text-xs text-gray-600 truncate max-w-[220px]"
-                            title={pack.description}
-                          >
-                            {pack.description}
-                          </p>
-                        </TableCell>
+                       
                         <TableCell>{pack.content.length}</TableCell>
                         <TableCell>€{pack.price.toFixed(2)}</TableCell>
                         <TableCell>

@@ -13,6 +13,7 @@ import { useCollections, Collection } from '@/hooks/useCollections';
 import { CollectionFormDrawer } from './CollectionFormDrawer'; 
 
 export const CollectionsSection: React.FC = () => {
+  const lang = 'fr';
   const { collections, isLoading, createCollection, updateCollection, deleteCollection } = useCollections();
 
   // Drawer state
@@ -25,8 +26,9 @@ export const CollectionsSection: React.FC = () => {
   // Filter collections locally
   const filteredCollections = useMemo(() => {
     return collections.filter((col) => {
-      const matchesSearch = col.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           col.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = col.name?.[lang]?.toLowerCase().includes(searchLower) ||
+                           col.description?.[lang]?.toLowerCase().includes(searchLower);
       
       const status = col.is_active ? 'active' : 'draft';
       const matchesStatus = statusFilter === 'all' || status === statusFilter;
@@ -129,13 +131,13 @@ export const CollectionsSection: React.FC = () => {
                       <TableRow key={collection._id} className="group border-gray-200 dark:border-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-800/50">
   
   {/* Collection Name (Wrapped in Details Modal for easy access) */}
-  <TableCell className="px-4 py-3">
+    <TableCell className="px-4 py-3">
     <CollectionDetailsModal collection={collection}>
       <div className="cursor-pointer group-hover:translate-x-1 transition-transform">
         <p className="font-medium text-gray-900 dark:text-white underline-offset-4 group-hover:underline">
-          {collection.name}
+          {collection.name?.[lang]}
         </p>
-        <p className="text-xs text-gray-600 dark:text-zinc-400 truncate max-w-[200px]">{collection.description}</p>
+        <p className="text-xs text-gray-600 dark:text-zinc-400 truncate max-w-[200px]">{collection.description?.[lang]}</p>
       </div>
     </CollectionDetailsModal>
   </TableCell>

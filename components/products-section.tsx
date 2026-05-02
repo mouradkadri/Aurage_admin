@@ -53,6 +53,7 @@ const StatusBadge = ({
 const ITEMS_PER_PAGE = 5;
 
 export const ProductsSection: React.FC = () => {
+  const lang = 'fr';
   const { 
     products, bottleVariants, isLoading, 
     createProduct, updateProduct, deleteProduct,
@@ -84,11 +85,12 @@ export const ProductsSection: React.FC = () => {
     let result: any[] =[];
 
     if (activeTab === 'products') {
-      result = products.filter((p) => {
+     result = products.filter((p) => {
+        const searchLower = searchTerm.toLowerCase();
         const matchesSearch =
-          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.slug?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.description?.toLowerCase().includes(searchTerm.toLowerCase());
+          p.name[lang].toLowerCase().includes(searchLower) ||
+          p.slug?.toLowerCase().includes(searchLower) ||
+          p.description?.[lang]?.toLowerCase().includes(searchLower); 
         
         const pStatus = getStatus(p.liquid_stock_quantity);
         const matchesStatus = !statusFilter || pStatus === statusFilter;
@@ -306,13 +308,13 @@ export const ProductsSection: React.FC = () => {
       <tr key={item._id} className="border-b border-gray-100 dark:border-zinc-800/50 hover:bg-gray-50 dark:hover:bg-zinc-800/30 transition-colors">
         
         {/* Name & Image */}
-        <td className="px-6 py-4">
+               <td className="px-6 py-4">
           <div className="flex items-center gap-3">
             {!isProduct && item.image_url && (
                <img src={item.image_url} className="w-9 h-9 rounded-lg object-cover border border-gray-200 dark:border-zinc-700" alt={item.name} />
             )}
             <span className="text-sm font-semibold text-gray-900 dark:text-white">
-              {item.name}
+              {isProduct ? item.name[lang] : item.name} {/* <-- Conditionally render bilingual or plain string */}
             </span>
           </div>
         </td>

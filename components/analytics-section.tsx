@@ -497,7 +497,17 @@ const CustomerRetentionChart: React.FC<{
               <BarChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={t.gridColor} vertical={false} />
                 <XAxis dataKey="period" stroke={t.axisColor} tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
-                <YAxis stroke={t.axisColor} tick={{ fontSize: 9 }} tickLine={false} axisLine={false} width={44} />
+                <YAxis
+  stroke={t.axisColor}
+  tick={{ fontSize: 10 }}
+  tickLine={false}
+  axisLine={false}
+  width={48}
+  tickFormatter={(value) => {
+    if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
+    return value;
+  }}
+/>
                 <Tooltip
                   contentStyle={{ backgroundColor: t.tooltipBg, border: `1px solid ${t.tooltipBorder}`, borderRadius: '8px', fontSize: '12px' }}
                   labelStyle={{ color: t.textColor, fontWeight: 600 }}

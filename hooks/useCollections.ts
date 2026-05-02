@@ -11,12 +11,15 @@ export interface CollectionItem {
   item: any; // After population, this will be a Product or Pack object
   onModel: 'Product' | 'Pack';
 }
-
+export interface BilingualField {
+  en: string;
+  fr: string;
+}
 export interface Collection {
   _id: string;
-  name: string;
+  name: BilingualField;
   slug: string;
-  description: string;
+  description: BilingualField;
   is_active: boolean;
   image?: {
     url: string;

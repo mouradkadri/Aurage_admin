@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Product } from '@/hooks/useProducts';
 
 export const ProductDetailsModal = ({ product, children }: { product: Product, children: React.ReactNode }) => {
+  const lang = 'fr'; 
   return (
     <Dialog>
       <DialogTrigger asChild>{children}</DialogTrigger>
@@ -24,7 +25,7 @@ export const ProductDetailsModal = ({ product, children }: { product: Product, c
           <DialogHeader className="relative z-10">
             <div className="flex justify-between items-start mb-2">
               <DialogTitle className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                {product.name}
+                {product.name?.[lang]}
               </DialogTitle>
               <Badge 
                 variant={product.is_active ? "default" : "secondary"}
@@ -82,7 +83,7 @@ export const ProductDetailsModal = ({ product, children }: { product: Product, c
                   Description
                 </h4>
                 <p className="text-[15px] leading-relaxed text-zinc-600 dark:text-zinc-300">
-                  {product.description}
+                  {product.description?.[lang]}
                 </p>
               </section>
               

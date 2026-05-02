@@ -17,26 +17,62 @@ import { IntigoShippingPanel } from './IntigoShippingPanel';
 import {
   ChevronLeft, ChevronRight, Printer, MapPin, CheckCircle2, Search,
   Truck, CheckCircle, RotateCcw, AlertCircle, FileDown, Loader2, Filter,
-  Package, FileSpreadsheet,
+  Package, FileSpreadsheet, ExternalLink, Calendar, Hash,
 } from 'lucide-react';
 import { useOrders, Order, OrderHistoryLog, DeliveryFilter, OrderStats } from '@/hooks/useOrders';
+
+// ─── i18n ─────────────────────────────────────────────────────────────────────
+// Single source of truth for the UI language.
+// Switch this to 'en' to flip every bilingual field at once.
+// Bilingual fields: Product.name/description/scent_description/features,
+//                   Pack.name/description, Collection.name/description,
+//                   Announcement.text
+// Non-bilingual:    BottleVariant.name (plain string — never index with lang)
+const LANG: 'fr' | 'en' = 'fr';
+
+/** Safely read a bilingual { en, fr } field, falling back to the other locale. */
+function t(field: { en?: string; fr?: string } | string | null | undefined): string {
+  if (!field) return '';
+  if (typeof field === 'string') return field;           // plain string (e.g. bottle.name)
+  return field[LANG] || field.en || field.fr || '';
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const statusFr = (s: string) =>
   ({ pending: 'En attente', printed: 'Imprimé', shipped: 'Expédié', delivered: 'Livré', cancelled: 'Annulé' } as Record<string, string>)[s] ?? s;
 
+/** Two-letter initials avatar for a customer */
+const CustomerAvatar = ({ firstName, lastName }: { firstName?: string; lastName?: string }) => {
+  const initials = `${(firstName?.[0] ?? '').toUpperCase()}${(lastName?.[0] ?? '').toUpperCase()}` || '?';
+  // Deterministic pastel from name
+  const hue = ((firstName ?? '').charCodeAt(0) * 37 + (lastName ?? '').charCodeAt(0) * 17) % 360;
+  return (
+    <span
+      className="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold flex-shrink-0 select-none"
+      style={{ background: `hsl(${hue} 55% 88%)`, color: `hsl(${hue} 55% 30%)` }}
+    >
+      {initials}
+    </span>
+  );
+};
+
 const StatusBadge = ({ status }: { status: string }) => {
   const styles: Record<string, string> = {
-    pending:   'bg-yellow-500/10 border-yellow-500/20 text-yellow-600',
-    printed:   'bg-blue-500/10 border-blue-500/20 text-blue-600',
-    shipped:   'bg-purple-500/10 border-purple-500/20 text-purple-600',
-    delivered: 'bg-green-500/10 border-green-500/20 text-green-600',
-    cancelled: 'bg-red-500/10 border-red-500/20 text-red-600',
+    pending:   'bg-amber-500/10 border-amber-500/25 text-amber-700 dark:text-amber-400',
+    printed:   'bg-blue-500/10 border-blue-500/25 text-blue-700 dark:text-blue-400',
+    shipped:   'bg-violet-500/10 border-violet-500/25 text-violet-700 dark:text-violet-400',
+    delivered: 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700 dark:text-emerald-400',
+    cancelled: 'bg-red-500/10 border-red-500/25 text-red-600 dark:text-red-400',
+  };
+  const dots: Record<string, string> = {
+    pending: 'bg-amber-500', printed: 'bg-blue-500', shipped: 'bg-violet-500',
+    delivered: 'bg-emerald-500', cancelled: 'bg-red-500',
   };
   return (
-    <span className={`px-2 py-1 rounded text-xs font-medium border uppercase tracking-wider ${styles[status] ?? styles.pending}`}>
-      {status ?? 'pending'}
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold border uppercase tracking-wide ${styles[status] ?? styles.pending}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dots[status] ?? 'bg-gray-400'}`} />
+      {statusFr(status)}
     </span>
   );
 };
@@ -52,23 +88,9 @@ function isIntigoExcelOrder(order: Pick<Order, 'delivery_method' | 'intigo'>): b
 }
 
 // ─── IntigoStatusChip ─────────────────────────────────────────────────────────
-//
-// Three variants:
-//
-//   isApi  = true  → always-visible purple "Intigo API · NID" chip
-//                    + optional grey sub-label line (status from Intigo)
-//   isExcel = true → emerald "Via Excel" chip
-//   neither        → nothing
-//
-// The API chip is unconditional — it never depends on status_label being set,
-// so it persists even on the first render after shipping when label is null.
-// ─────────────────────────────────────────────────────────────────────────────
+
 const IntigoStatusChip = ({
-  isApi,
-  nid,
-  label,
-  eventType,
-  isExcel,
+  isApi, nid, label, eventType, isExcel,
 }: {
   isApi?: boolean;
   nid?: string | null;
@@ -81,27 +103,20 @@ const IntigoStatusChip = ({
       pickup_pending:   'text-amber-600 dark:text-amber-400',
       pending_delivery: 'text-blue-600 dark:text-blue-400',
       in_depot:         'text-blue-600 dark:text-blue-400',
-      in_transit:       'text-purple-600 dark:text-purple-400',
+      in_transit:       'text-violet-600 dark:text-violet-400',
       out_for_delivery: 'text-indigo-600 dark:text-indigo-400',
-      delivered:        'text-green-600 dark:text-green-400',
+      delivered:        'text-emerald-600 dark:text-emerald-400',
       return_pending:   'text-orange-600 dark:text-orange-400',
       returned:         'text-red-600 dark:text-red-400',
       cancelled:        'text-red-600 dark:text-red-400',
     };
-
     return (
       <div className="flex flex-col gap-0.5">
-        {/* Primary chip — always shown for API orders */}
-        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-800/50">
+        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800/50">
           <Truck className="w-2.5 h-2.5 flex-shrink-0" />
           Intigo API
-          {nid && (
-            <span className="ml-1 font-mono opacity-70">
-              · {nid.slice(-6).toUpperCase()}
-            </span>
-          )}
+          {nid && <span className="ml-1 font-mono opacity-60">· {nid.slice(-6).toUpperCase()}</span>}
         </span>
-        {/* Sub-label — shown only when Intigo has set a status */}
         {label && (
           <span className={`text-[10px] pl-1 ${subLabelColor[eventType ?? ''] ?? 'text-gray-500 dark:text-zinc-500'}`}>
             {label}
@@ -110,101 +125,68 @@ const IntigoStatusChip = ({
       </div>
     );
   }
-
   if (isExcel) {
     return (
-      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800/50">
+      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800/50">
         <Package className="w-2.5 h-2.5 flex-shrink-0" />
         Via Excel
       </span>
     );
   }
-
   return null;
 };
 
 // ─── Delivery Stats Card ──────────────────────────────────────────────────────
 
 const DeliveryStatsCard = ({
-  stats,
-  deliveryFilter,
-  onFilterChange,
+  stats, deliveryFilter, onFilterChange,
 }: {
   stats: OrderStats;
   deliveryFilter: DeliveryFilter;
   onFilterChange: (v: DeliveryFilter) => void;
 }) => {
-  const items: { key: DeliveryFilter; label: string; sublabel: string; count: number; icon: React.ElementType; color: string; activeBg: string }[] = [
-    {
-      key:      'self',
-      label:    'Auto-livraison',
-      sublabel: 'Sans Intigo',
-      count:    stats.delivery.self,
-      icon:     CheckCircle,
-      color:    'text-gray-600 dark:text-zinc-400',
-      activeBg: 'bg-gray-100 dark:bg-zinc-800 ring-1 ring-gray-300 dark:ring-zinc-600',
-    },
-    {
-      key:      'intigo',
-      label:    'Intigo (total)',
-      sublabel: 'API + Excel',
-      count:    stats.delivery.intigo,
-      icon:     Truck,
-      color:    'text-purple-600 dark:text-purple-400',
-      activeBg: 'bg-purple-50 dark:bg-purple-950/30 ring-1 ring-purple-300 dark:ring-purple-700',
-    },
-    {
-      key:      'intigo_api',
-      label:    'Intigo API',
-      sublabel: 'Avec NID',
-      count:    stats.delivery.intigo_api,
-      icon:     Truck,
-      color:    'text-indigo-600 dark:text-indigo-400',
-      activeBg: 'bg-indigo-50 dark:bg-indigo-950/30 ring-1 ring-indigo-300 dark:ring-indigo-700',
-    },
-    {
-      key:      'intigo_excel',
-      label:    'Intigo Excel',
-      sublabel: 'Sans suivi API',
-      count:    stats.delivery.intigo_excel,
-      icon:     Package,
-      color:    'text-emerald-600 dark:text-emerald-400',
-      activeBg: 'bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300 dark:ring-emerald-700',
-    },
+  const items: {
+    key: DeliveryFilter; label: string; sublabel: string; count: number;
+    icon: React.ElementType; color: string; activeBg: string; dot: string;
+  }[] = [
+    { key: 'self',         label: 'Auto-livraison', sublabel: 'Sans Intigo',   count: stats.delivery.self,          icon: CheckCircle,  color: 'text-gray-600 dark:text-zinc-400',      activeBg: 'bg-gray-100 dark:bg-zinc-800 ring-1 ring-gray-300 dark:ring-zinc-600',          dot: 'bg-gray-400'   },
+    { key: 'intigo',       label: 'Intigo (total)', sublabel: 'API + Excel',   count: stats.delivery.intigo,        icon: Truck,        color: 'text-violet-600 dark:text-violet-400',  activeBg: 'bg-violet-50 dark:bg-violet-950/30 ring-1 ring-violet-300 dark:ring-violet-700', dot: 'bg-violet-500' },
+    { key: 'intigo_api',   label: 'Intigo API',     sublabel: 'Avec NID',      count: stats.delivery.intigo_api,   icon: Truck,        color: 'text-indigo-600 dark:text-indigo-400',  activeBg: 'bg-indigo-50 dark:bg-indigo-950/30 ring-1 ring-indigo-300 dark:ring-indigo-700', dot: 'bg-indigo-500' },
+    { key: 'intigo_excel', label: 'Intigo Excel',   sublabel: 'Sans suivi API',count: stats.delivery.intigo_excel, icon: Package,      color: 'text-emerald-600 dark:text-emerald-400',activeBg: 'bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300 dark:ring-emerald-700', dot: 'bg-emerald-500' },
   ];
 
   return (
     <Card className="bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800">
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase tracking-wider">
+          <p className="text-[11px] font-bold text-gray-500 dark:text-zinc-500 uppercase tracking-widest">
             Mode de livraison
           </p>
           {deliveryFilter !== 'all' && (
             <button
               onClick={() => onFilterChange('all')}
-              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 underline"
+              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 underline underline-offset-2"
             >
               Tout afficher
             </button>
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {items.map(({ key, label, sublabel, count, icon: Icon, color, activeBg }) => {
+          {items.map(({ key, label, sublabel, count, icon: Icon, color, activeBg, dot }) => {
             const isActive = deliveryFilter === key;
             return (
               <button
                 key={key}
                 onClick={() => onFilterChange(isActive ? 'all' : key)}
-                className={`flex items-start gap-2.5 p-3 rounded-lg text-left transition-all ${
-                  isActive ? activeBg : 'hover:bg-gray-50 dark:hover:bg-zinc-800/50'
-                }`}
+                className={`group flex items-start gap-3 p-3 rounded-xl text-left transition-all duration-150 ${isActive ? activeBg : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60'}`}
               >
-                <Icon className={`w-4 h-4 flex-shrink-0 mt-0.5 ${color}`} />
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${isActive ? 'bg-white dark:bg-zinc-900 shadow-sm' : 'bg-gray-100 dark:bg-zinc-800'}`}>
+                  <Icon className={`w-4 h-4 ${color}`} />
+                </div>
                 <div className="min-w-0">
-                  <p className={`text-lg font-bold leading-none ${color}`}>{count}</p>
-                  <p className="text-xs font-medium text-gray-900 dark:text-white mt-1 truncate">{label}</p>
-                  <p className="text-[10px] text-gray-500 dark:text-zinc-500 truncate">{sublabel}</p>
+                  <p className={`text-xl font-bold leading-none tabular-nums ${color}`}>{count}</p>
+                  <p className="text-xs font-semibold text-gray-800 dark:text-zinc-200 mt-1 truncate">{label}</p>
+                  <p className="text-[10px] text-gray-400 dark:text-zinc-500 truncate">{sublabel}</p>
                 </div>
               </button>
             );
@@ -225,8 +207,8 @@ async function loadPdfLibs() {
   return { jsPDF: jsPDFModule.default, autoTable: autoTableModule.default };
 }
 
-const AMBER_RGB = [245, 158, 11] as [number, number, number];
-const DARK_RGB  = [24,  24,  27] as [number, number, number];
+const AMBER_RGB = [245, 158, 11]  as [number, number, number];
+const DARK_RGB  = [24,  24,  27]  as [number, number, number];
 const GRAY_RGB  = [113, 113, 122] as [number, number, number];
 const LIGHT_RGB = [250, 250, 250] as [number, number, number];
 const WHITE_RGB = [255, 255, 255] as [number, number, number];
@@ -260,7 +242,10 @@ function drawPage(doc: any, autoTable: any, order: Order) {
   doc.text(`Date : ${fmtDate(order.created_at)}`, pageW - M, 38, { align: 'right' });
   doc.setDrawColor(...AMBER_RGB); doc.setLineWidth(1.5); doc.line(0, 52, pageW, 52);
 
-  const statusFrMap: Record<string, string> = { pending: 'En attente', printed: 'Imprimé', shipped: 'Expédié', delivered: 'Livré', cancelled: 'Annulé' };
+  const statusFrMap: Record<string, string> = {
+    pending: 'En attente', printed: 'Imprimé', shipped: 'Expédié',
+    delivered: 'Livré', cancelled: 'Annulé',
+  };
   doc.setFillColor(...AMBER_RGB); doc.roundedRect(M, 58, 38, 8, 2, 2, 'F');
   doc.setTextColor(...WHITE_RGB); doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
   doc.text((statusFrMap[order.status] ?? order.status).toUpperCase(), M + 19, 63.5, { align: 'center' });
@@ -289,7 +274,7 @@ function drawPage(doc: any, autoTable: any, order: Order) {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...GRAY_RGB);
   const addr = order.shipping_address ?? {};
   const a1 = addr.street ?? '';
-  const a2 = [addr.city, addr.governorate ?? addr.state].filter(Boolean).join(', ');
+  const a2 = [addr.city, addr.governorate ?? (addr as any).state].filter(Boolean).join(', ');
   let ay = y + 22;
   if (a1) { doc.text(a1, rX + 4, ay); ay += 7; }
   if (a2) { doc.text(a2, rX + 4, ay); ay += 7; }
@@ -301,9 +286,19 @@ function drawPage(doc: any, autoTable: any, order: Order) {
   doc.text('Détail de la commande', M, y);
   y += 5;
 
+  // ── i18n: use the t() helper so bilingual fields resolve to the correct locale.
+  // bottle.name is a plain string (not bilingual) — t() handles both cases safely.
   const rows = (order.items ?? []).map(item => {
-    let desc = item.pack ? `Pack : ${item.pack.name}` : item.product?.name ?? 'Produit';
-    if (!item.pack && item.bottle) desc += `\nFlacon : ${item.bottle.name}`;
+    let desc: string;
+    if (item.pack) {
+      // Pack.name is bilingual { en, fr }
+      desc = `Pack : ${t(item.pack.name)}`;
+    } else {
+      // Product.name is bilingual { en, fr }
+      desc = t(item.product?.name) || 'Produit';
+      // BottleVariant.name is a plain string — never use [lang] on it
+      if (item.bottle?.name) desc += `\nFlacon : ${item.bottle.name}`;
+    }
     const qty  = item.quantity || 1;
     const unit = item.price_at_purchase || 0;
     return [desc, String(qty), fmt(unit), fmt(unit * qty)];
@@ -390,56 +385,66 @@ const BulkActionBar: React.FC<{
 }> = ({ selectedCount, isUpdating, isPrinting, onClose, onAction, onPrintInvoices, onExportIntigo }) => {
   if (selectedCount === 0) return null;
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-2xl px-6 py-4 flex items-center gap-4 animate-in slide-in-from-bottom-10">
-      <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">
-        {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-2xl shadow-2xl px-4 py-3 animate-in slide-in-from-bottom-10 duration-200">
+      {/* Count badge */}
+      <span className="flex items-center justify-center min-w-[2rem] h-7 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold px-2 mr-2">
+        {selectedCount}
       </span>
-      <Separator orientation="vertical" className="bg-gray-200 dark:bg-zinc-800 h-6" />
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant="ghost" disabled={isUpdating || isPrinting} onClick={onPrintInvoices}
-          className="text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20">
-          {isPrinting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileDown className="w-4 h-4 mr-2" />}
-          Factures PDF
-        </Button>
-        <Button size="sm" variant="ghost" disabled={isUpdating} onClick={onExportIntigo}
-          className="text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/20">
-          <FileDown className="w-4 h-4 mr-2" />Export Intigo
-        </Button>
-        <Button size="sm" variant="ghost" disabled={isUpdating} onClick={() => onAction('printed')}
-          className="text-blue-600 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/20">
-          <Printer className="w-4 h-4 mr-2" />Imprimer
-        </Button>
-        <Button size="sm" variant="ghost" disabled={isUpdating} onClick={() => onAction('shipped')}
-          className="text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/20">
-          <Truck className="w-4 h-4 mr-2" />Expédié
-        </Button>
-        <Button size="sm" variant="ghost" disabled={isUpdating} onClick={() => onAction('delivered')}
-          className="text-green-600 hover:bg-green-50 hover:text-green-700 dark:text-green-400 dark:hover:bg-green-900/20">
-          <CheckCircle className="w-4 h-4 mr-2" />Livré
-        </Button>
-        <Button size="sm" variant="ghost" disabled={isUpdating} onClick={() => onAction('cancelled')}
-          className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20">
-          <RotateCcw className="w-4 h-4 mr-2" />Annuler
-        </Button>
+      <span className="text-xs font-medium text-gray-500 dark:text-zinc-400 mr-3 whitespace-nowrap hidden sm:block">
+        sélectionné{selectedCount > 1 ? 's' : ''}
+      </span>
+
+      <Separator orientation="vertical" className="bg-gray-200 dark:bg-zinc-700 h-5 mr-2 hidden sm:block" />
+
+      <div className="flex items-center gap-1">
+        <BulkBtn disabled={isUpdating || isPrinting} onClick={onPrintInvoices} icon={isPrinting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} label="Factures" color="amber" />
+        <BulkBtn disabled={isUpdating} onClick={onExportIntigo}              icon={<FileDown className="w-3.5 h-3.5" />}            label="Intigo"   color="emerald" />
+        <BulkBtn disabled={isUpdating} onClick={() => onAction('printed')}   icon={<Printer className="w-3.5 h-3.5" />}              label="Imprimé"  color="blue" />
+        <BulkBtn disabled={isUpdating} onClick={() => onAction('shipped')}   icon={<Truck className="w-3.5 h-3.5" />}                label="Expédié"  color="violet" />
+        <BulkBtn disabled={isUpdating} onClick={() => onAction('delivered')} icon={<CheckCircle className="w-3.5 h-3.5" />}          label="Livré"    color="green" />
+        <BulkBtn disabled={isUpdating} onClick={() => onAction('cancelled')} icon={<RotateCcw className="w-3.5 h-3.5" />}            label="Annuler"  color="red" />
       </div>
-      <Separator orientation="vertical" className="bg-gray-200 dark:bg-zinc-800 h-6 mx-2" />
-      <Button size="sm" variant="ghost" disabled={isUpdating} onClick={onClose}
-        className="text-gray-500 hover:bg-gray-100 dark:hover:bg-zinc-800 px-2">✕</Button>
+
+      <Separator orientation="vertical" className="bg-gray-200 dark:bg-zinc-700 h-5 mx-2" />
+      <button
+        disabled={isUpdating}
+        onClick={onClose}
+        className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 hover:text-gray-600 transition-colors text-sm font-medium"
+      >
+        ✕
+      </button>
     </div>
   );
 };
 
+const BulkBtn = ({
+  disabled, onClick, icon, label, color,
+}: {
+  disabled: boolean; onClick: () => void; icon: React.ReactNode; label: string;
+  color: 'amber' | 'emerald' | 'blue' | 'violet' | 'green' | 'red';
+}) => {
+  const colors = {
+    amber:  'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20',
+    emerald:'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20',
+    blue:   'text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20',
+    violet: 'text-violet-600 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20',
+    green:  'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20',
+    red:    'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20',
+  };
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${colors[color]}`}
+    >
+      {icon}
+      <span className="hidden sm:block">{label}</span>
+    </button>
+  );
+};
+
 // ─── Order Details Sheet ──────────────────────────────────────────────────────
-//
-// Receives two refresh callbacks:
-//
-//   onRefresh      — normal refresh, keeps current filters (status updates,
-//                    notes, print invoice, Excel export)
-//   onShipRefresh  — called after a successful Intigo API ship; resets
-//                    statusFilter to 'all' so the newly-shipped order (now
-//                    status='shipped') stays visible instead of disappearing
-//                    from a 'pending'/'printed' filtered view
-// ─────────────────────────────────────────────────────────────────────────────
+
 const OrderDetailsSheet: React.FC<{
   selectedData: { order: Order; history: OrderHistoryLog[] } | null;
   open: boolean;
@@ -480,6 +485,9 @@ const OrderDetailsSheet: React.FC<{
     } finally { setIsPrinting(false); }
   };
 
+  const isIntigoApi   = order?.delivery_method === 'intigo' && !!order.intigo?.nid;
+  const isIntigoExcel = order ? isIntigoExcelOrder(order) : false;
+
   return (
     <Sheet open={open} onOpenChange={handleSheetClose}>
       <SheetContent className="w-full sm:max-w-2xl bg-white dark:bg-zinc-950 border-l border-gray-200 dark:border-zinc-800 flex flex-col p-0">
@@ -487,156 +495,211 @@ const OrderDetailsSheet: React.FC<{
 
         {isLoadingDetails || !order ? (
           <div className="flex-1 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
+            <div className="flex flex-col items-center gap-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
+              <p className="text-sm text-gray-400 dark:text-zinc-500">Chargement…</p>
+            </div>
           </div>
         ) : (
           <>
-            <div className="sticky top-0 z-10 bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-gray-900 dark:text-white text-xl font-bold">
-                  Commande #{order._id?.substring(order._id.length - 6).toUpperCase()}
-                </h2>
-                <p className="text-xs text-gray-600 dark:text-zinc-400 mt-1">
-                  {order.created_at ? new Date(order.created_at).toLocaleString('fr-FR') : '—'}
-                </p>
+            {/* ── Sheet header ── */}
+            <div className="sticky top-0 z-10 bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <CustomerAvatar firstName={order.customer?.first_name} lastName={order.customer?.last_name} />
+                  <div className="min-w-0">
+                    <h2 className="text-gray-900 dark:text-white text-base font-bold leading-tight truncate">
+                      {order.customer?.first_name ?? 'Client'} {order.customer?.last_name ?? ''}
+                    </h2>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-zinc-500 font-mono">
+                        <Hash className="w-3 h-3" />
+                        {order._id?.substring(order._id.length - 6).toUpperCase()}
+                      </span>
+                      <span className="text-gray-300 dark:text-zinc-700">·</span>
+                      <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-zinc-500">
+                        <Calendar className="w-3 h-3" />
+                        {order.created_at ? new Date(order.created_at).toLocaleString('fr-FR') : '—'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  variant="outline" size="sm"
+                  onClick={handlePrintInvoice} disabled={isPrinting}
+                  className="flex-shrink-0 flex items-center gap-2 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700/50 dark:text-amber-400 dark:hover:bg-amber-900/20"
+                >
+                  {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                  <span className="hidden sm:block">Facture PDF</span>
+                </Button>
               </div>
-              <Button variant="outline" size="sm" onClick={handlePrintInvoice} disabled={isPrinting}
-                className="flex items-center gap-2 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400">
-                {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-                Facture PDF
-              </Button>
+
+              {/* Status pills row */}
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <StatusBadge status={order.status} />
+                {isIntigoApi && (
+                  <IntigoStatusChip
+                    isApi nid={order.intigo?.nid}
+                    label={order.intigo?.status_label}
+                    eventType={order.intigo?.event_type}
+                  />
+                )}
+                {isIntigoExcel && <IntigoStatusChip isExcel />}
+                {order.delivery_method === 'self' && (
+                  <span className="flex items-center gap-1 text-[10px] text-gray-400 dark:text-zinc-500">
+                    <CheckCircle className="w-3 h-3" /> Auto-livraison
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
 
-              {/* Status + Customer */}
+              {/* Customer + Address side by side */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase">Statut</p>
-                  <div className="flex flex-col gap-1.5">
-                    <StatusBadge status={order.status} />
-                    {order.delivery_method === 'intigo' && (
-                      order.intigo?.nid
-                        ? <IntigoStatusChip
-                            isApi
-                            nid={order.intigo.nid}
-                            label={order.intigo.status_label}
-                            eventType={order.intigo.event_type}
-                          />
-                        : isIntigoExcelOrder(order)
-                          ? <IntigoStatusChip isExcel />
-                          : null
-                    )}
-                    {order.delivery_method === 'self' && (
-                      <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-zinc-500">
-                        <CheckCircle className="w-2.5 h-2.5" /> Auto-livraison
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="space-y-1 border-l border-gray-200 dark:border-zinc-800 pl-4">
-                  <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase">Client</p>
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Contact</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">
                     {order.customer?.first_name ?? 'Client'} {order.customer?.last_name ?? ''}
                   </p>
-                  <p className="text-xs text-gray-600 dark:text-zinc-400">{order.customer?.phone}</p>
-                  {order.customer?.email && <p className="text-xs text-gray-600 dark:text-zinc-400">{order.customer.email}</p>}
+                  <p className="text-xs text-gray-500 dark:text-zinc-400">{order.customer?.phone ?? '—'}</p>
+                  {order.customer?.email && (
+                    <p className="text-xs text-gray-400 dark:text-zinc-500 truncate">{order.customer.email}</p>
+                  )}
                 </div>
-              </div>
-
-              <Separator className="bg-gray-200 dark:bg-zinc-800" />
-
-              {/* Address */}
-              <div>
-                <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase mb-2">Adresse</p>
-                <div className="flex items-start gap-2 text-sm text-gray-900 dark:text-white">
-                  <MapPin className="w-4 h-4 text-gray-600 dark:text-zinc-400 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p>{order.shipping_address?.street ?? 'N/A'},{' '}
-                      {[order.shipping_address?.district, order.shipping_address?.governorate ?? order.shipping_address?.state].filter(Boolean).join(', ') || 'N/A'}
-                    </p>
-                    {(order.shipping_address?.governorate_id || order.shipping_address?.district_id) && (
-                      <p className="text-xs text-gray-400 dark:text-zinc-600 mt-0.5">
-                        Ville ID {order.shipping_address.governorate_id} · Délégation ID {order.shipping_address.district_id}
-                      </p>
-                    )}
+                <div className="space-y-1.5 border-l border-gray-100 dark:border-zinc-800 pl-4">
+                  <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Adresse</p>
+                  <div className="flex items-start gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-gray-700 dark:text-zinc-300 leading-relaxed">
+                      <p>{order.shipping_address?.street ?? 'N/A'}</p>
+                      <p>{[order.shipping_address?.district, order.shipping_address?.governorate ?? (order.shipping_address as any)?.state].filter(Boolean).join(', ') || 'N/A'}</p>
+                      {(order.shipping_address?.governorate_id || order.shipping_address?.district_id) && (
+                        <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-0.5">
+                          Ville {order.shipping_address.governorate_id} · Déleg. {order.shipping_address.district_id}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <Separator className="bg-gray-200 dark:bg-zinc-800" />
+              <Separator className="bg-gray-100 dark:bg-zinc-800" />
 
-              {/* Items */}
+              {/* Articles */}
               <div>
-                <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase mb-3">Articles</p>
-                <div className="border border-gray-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+                <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest mb-3">Articles</p>
+                <div className="border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
                   <Table>
-                    <TableHeader className="bg-gray-50 dark:bg-zinc-900/50">
-                      <TableRow>
-                        <TableHead className="text-xs font-semibold">Article</TableHead>
-                        <TableHead className="text-xs font-semibold text-center">Qté</TableHead>
-                        <TableHead className="text-xs font-semibold text-right">Prix unit.</TableHead>
+                    <TableHeader className="bg-gray-50 dark:bg-zinc-900/60">
+                      <TableRow className="border-b border-gray-200 dark:border-zinc-800">
+                        <TableHead className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 py-2.5">Article</TableHead>
+                        <TableHead className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 text-center py-2.5">Qté</TableHead>
+                        <TableHead className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 text-right py-2.5">Prix unit.</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {(!order.items || order.items.length === 0) ? (
                         <TableRow>
-                          <TableCell colSpan={3} className="text-center py-6 text-sm text-gray-500">Aucun article.</TableCell>
+                          <TableCell colSpan={3} className="text-center py-8 text-sm text-gray-400">Aucun article.</TableCell>
                         </TableRow>
                       ) : order.items.map((item, idx) => (
-                        <TableRow key={item._id ?? idx} className="border-b border-gray-200 dark:border-zinc-800">
-                          <TableCell className="px-3 py-2">
-                            {item.pack
-                              ? <div><p className="text-sm font-medium">📦 {item.pack.name}</p><p className="text-xs text-gray-500">Pack groupé</p></div>
-                              : <div><p className="text-sm font-medium">{item.product?.name ?? 'Produit'}</p><p className="text-xs text-gray-500">Flacon : {item.bottle?.name ?? 'N/A'}</p></div>
-                            }
+                        <TableRow key={item._id ?? idx} className="border-b border-gray-100 dark:border-zinc-800/60 last:border-0">
+                          <TableCell className="px-3 py-3">
+                            {item.pack ? (
+                              <div>
+                                {/* Pack.name is bilingual — use t() */}
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  📦 {t(item.pack.name)}
+                                </p>
+                                <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-0.5">Pack groupé</p>
+                              </div>
+                            ) : (
+                              <div>
+                                {/* Product.name is bilingual — use t() */}
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  {t(item.product?.name) || 'Produit'}
+                                </p>
+                                {/* BottleVariant.name is a plain string — never use [lang] on it */}
+                                <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-0.5">
+                                  Flacon : {item.bottle?.name ?? 'N/A'}
+                                </p>
+                              </div>
+                            )}
                           </TableCell>
-                          <TableCell className="text-center text-sm">{item.quantity}</TableCell>
-                          <TableCell className="text-right text-sm">DT{(item.price_at_purchase ?? 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-sm font-medium text-gray-700 dark:text-zinc-300">
+                            {item.quantity}
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-semibold text-gray-900 dark:text-white pr-3">
+                            DT{(item.price_at_purchase ?? 0).toFixed(2)}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
-              </div>
 
-              <div className="bg-gray-50 dark:bg-zinc-900/50 rounded-lg p-4">
-                <div className="flex justify-between text-lg font-bold text-gray-900 dark:text-white">
-                  <span>Total</span>
-                  <span>DT{(order.total_amount ?? 0).toFixed(2)}</span>
+                {/* Total */}
+                <div className="mt-3 flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-zinc-900/60 rounded-xl border border-gray-100 dark:border-zinc-800">
+                  <span className="text-sm font-semibold text-gray-500 dark:text-zinc-400">Total commande</span>
+                  <span className="text-lg font-bold text-gray-900 dark:text-white">
+                    DT{(order.total_amount ?? 0).toFixed(2)}
+                  </span>
                 </div>
               </div>
 
-              <Separator className="bg-gray-200 dark:bg-zinc-800" />
+              <Separator className="bg-gray-100 dark:bg-zinc-800" />
 
               {/* Timeline */}
               <div>
-                <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase mb-4">Historique</p>
-                <div className="space-y-4">
-                  {history.length === 0
-                    ? <p className="text-sm text-gray-500">Aucun historique.</p>
-                    : history.map((log, index) => (
+                <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest mb-4">
+                  Historique
+                </p>
+                <div className="space-y-3">
+                  {history.length === 0 ? (
+                    <p className="text-sm text-gray-400 dark:text-zinc-500 italic">Aucun historique.</p>
+                  ) : history.map((log, index) => {
+                    const isCancelled = log.status === 'cancelled';
+                    return (
                       <div key={log._id} className="flex gap-3">
                         <div className="flex flex-col items-center">
-                          <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${log.status === 'cancelled' ? 'bg-red-500/10 border-red-500 text-red-600' : 'bg-blue-500/10 border-blue-500 text-blue-600'}`}>
-                            {log.status === 'cancelled' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                          <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isCancelled ? 'bg-red-50 border-red-400 text-red-500 dark:bg-red-950/30 dark:border-red-600' : 'bg-blue-50 border-blue-400 text-blue-500 dark:bg-blue-950/30 dark:border-blue-600'}`}>
+                            {isCancelled
+                              ? <AlertCircle className="w-3.5 h-3.5" />
+                              : <CheckCircle2 className="w-3.5 h-3.5" />
+                            }
                           </div>
-                          {index < history.length - 1 && <div className="w-0.5 h-8 bg-gray-300 dark:bg-zinc-700 mt-2" />}
+                          {index < history.length - 1 && (
+                            <div className="w-px flex-1 bg-gray-200 dark:bg-zinc-700 mt-1 mb-0 min-h-[1.5rem]" />
+                          )}
                         </div>
-                        <div className="pt-1">
-                          <p className="text-sm font-medium text-gray-900 dark:text-white capitalize">Statut : {statusFr(log.status)}</p>
-                          <p className="text-xs text-gray-600 dark:text-zinc-400">{new Date(log.created_at).toLocaleString('fr-FR')}</p>
-                          {log.note && <p className="text-xs text-gray-500 italic mt-1">{log.note}</p>}
-                          {log.admin_id && <p className="text-xs text-amber-600 mt-1">Par : {log.admin_id.name}</p>}
+                        <div className="pb-3 min-w-0">
+                          <p className="text-xs font-semibold text-gray-900 dark:text-white">
+                            {statusFr(log.status)}
+                          </p>
+                          <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-0.5">
+                            {new Date(log.created_at).toLocaleString('fr-FR')}
+                          </p>
+                          {log.note && (
+                            <p className="text-[11px] text-gray-500 dark:text-zinc-400 italic mt-1 bg-gray-50 dark:bg-zinc-900 rounded px-2 py-1">
+                              {log.note}
+                            </p>
+                          )}
+                          {log.admin_id && (
+                            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                              Par : {log.admin_id.name}
+                            </p>
+                          )}
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
                 </div>
               </div>
 
-              <Separator className="bg-gray-200 dark:bg-zinc-800" />
+              <Separator className="bg-gray-100 dark:bg-zinc-800" />
 
-              {/* onShipRefresh resets statusFilter to 'all' before fetching */}
+              {/* Intigo shipping panel */}
               <IntigoShippingPanel
                 orderId={order._id}
                 orderStatus={order.status}
@@ -646,17 +709,45 @@ const OrderDetailsSheet: React.FC<{
                 onShipped={onShipRefresh}
               />
 
-              <Separator className="bg-gray-200 dark:bg-zinc-800" />
+              <Separator className="bg-gray-100 dark:bg-zinc-800" />
 
+              {/* Status update */}
               <div>
-                <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase mb-2">Mettre à jour</p>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Ajouter une note interne..." rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm mb-2 bg-transparent" />
+                <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest mb-2">
+                  Mettre à jour
+                </p>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Ajouter une note interne (optionnel)…"
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm mb-3 bg-transparent text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 dark:focus:border-amber-600 resize-none transition"
+                />
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => handleStatusUpdate('shipped')}>Marquer expédié</Button>
-                  <Button size="sm" variant="outline" onClick={() => handleStatusUpdate('delivered')}>Marquer livré</Button>
-                  <Button size="sm" variant="destructive" onClick={() => handleStatusUpdate('cancelled')}>Annuler</Button>
+                  <Button size="sm" onClick={() => handleStatusUpdate('shipped')}
+                    className="bg-violet-600 hover:bg-violet-700 text-white">
+                    <Truck className="w-3.5 h-3.5 mr-1.5" /> Marquer expédié
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleStatusUpdate('delivered')}
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/20">
+                    <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Marquer livré
+                  </Button>
+                  {(order.delivery_method !== 'intigo' || !order.intigo?.nid) && (
+                    <Button size="sm" variant="destructive" onClick={() => handleStatusUpdate('cancelled')}>
+                      <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Annuler
+                    </Button>
+                  )}
+                  {order.delivery_method === 'intigo' && order.intigo?.nid && (
+                    <a
+                      href="https://app.intigo.net"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 mt-1 self-center"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Gérer via dashboard Intigo
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
@@ -688,8 +779,7 @@ export const OrdersSection = () => {
 
   const doFetch = useCallback((overrides: Record<string, any> = {}) => {
     fetchOrders({
-      page,
-      limit: 10,
+      page, limit: 10,
       status: statusFilter,
       delivery_method: deliveryFilter,
       searchTerm: searchTerm.trim() || undefined,
@@ -702,18 +792,11 @@ export const OrdersSection = () => {
     return () => clearTimeout(t);
   }, [searchTerm, statusFilter, deliveryFilter, page, doFetch]);
 
-  // ── Ship refresh — resets status filter to 'all' then fetches ──────────────
-  // Called exclusively by IntigoShippingPanel.onShipped.
-  // The backend sets order.status = 'shipped' on success, so if the user was
-  // looking at pending/printed orders the row would vanish. Switching to 'all'
-  // keeps it visible with the new Intigo API chip.
   const handleShipRefresh = useCallback(() => {
     setStatusFilter('all');
     setPage(1);
     fetchOrders({
-      page: 1,
-      limit: 10,
-      status: 'all',
+      page: 1, limit: 10, status: 'all',
       delivery_method: deliveryFilter,
       searchTerm: searchTerm.trim() || undefined,
     });
@@ -768,18 +851,15 @@ export const OrdersSection = () => {
   };
 
   const handleExportIntigo = async () => {
-    const selectedOrderObjects = orders.filter(o => selectedOrders.has(o._id));
-    if (selectedOrderObjects.length === 0) return;
-
-    await exportIntigoExcel(selectedOrderObjects, (result) => {
+    const selected = orders.filter(o => selectedOrders.has(o._id));
+    if (selected.length === 0) return;
+    await exportIntigoExcel(selected, (result) => {
       const parts: string[] = [];
       if (result.exported > 0)   parts.push(`${result.exported} colis exporté${result.exported > 1 ? 's' : ''}`);
       if (result.markedInDB > 0) parts.push(`${result.markedInDB} commande${result.markedInDB > 1 ? 's' : ''} mise${result.markedInDB > 1 ? 's' : ''} à jour`);
       if (result.skipped > 0)    parts.push(`${result.skipped} ignorée${result.skipped > 1 ? 's' : ''} (déjà expédiées)`);
-
       setExportToast(parts.join(' · '));
       setTimeout(() => setExportToast(null), 5000);
-
       setSelectedOrders(new Set());
       doFetch();
     });
@@ -792,23 +872,27 @@ export const OrdersSection = () => {
     setPage(1);
   };
 
+  const statusKpis = [
+    { label: 'En attente', key: 'pending',   color: 'text-amber-600 dark:text-amber-500',   bg: 'bg-amber-50 dark:bg-amber-950/20',   border: 'border-amber-200 dark:border-amber-800/30'   },
+    { label: 'Imprimés',   key: 'printed',   color: 'text-blue-600 dark:text-blue-500',     bg: 'bg-blue-50 dark:bg-blue-950/20',     border: 'border-blue-200 dark:border-blue-800/30'     },
+    { label: 'Expédiés',   key: 'shipped',   color: 'text-violet-600 dark:text-violet-500', bg: 'bg-violet-50 dark:bg-violet-950/20', border: 'border-violet-200 dark:border-violet-800/30' },
+    { label: 'Livrés',     key: 'delivered', color: 'text-emerald-600 dark:text-emerald-500',bg: 'bg-emerald-50 dark:bg-emerald-950/20',border: 'border-emerald-200 dark:border-emerald-800/30'},
+  ] as const;
+
   return (
-    <div className="space-y-6 pb-24 relative">
+    <div className="space-y-5 pb-24 relative">
 
       {/* Status KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {([
-          { label: 'En attente', key: 'pending',   color: 'text-yellow-600' },
-          { label: 'Imprimés',   key: 'printed',   color: 'text-blue-600'   },
-          { label: 'Expédiés',   key: 'shipped',   color: 'text-purple-600' },
-          { label: 'Livrés',     key: 'delivered', color: 'text-green-600'  },
-        ] as const).map(({ label, key, color }) => (
-          <Card key={key} className="bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800">
-            <CardContent className="p-4">
-              <p className={`text-xs font-medium ${color} mb-1 uppercase tracking-wider`}>{label}</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{(stats as any)[key] ?? 0}</p>
-            </CardContent>
-          </Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {statusKpis.map(({ label, key, color, bg, border }) => (
+          <button
+            key={key}
+            onClick={() => { setStatusFilter(statusFilter === key ? 'all' : key); setPage(1); }}
+            className={`text-left p-4 rounded-xl border transition-all duration-150 ${statusFilter === key ? `${bg} ${border} ring-1 ring-inset ${border}` : 'bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-800/60'}`}
+          >
+            <p className={`text-[11px] font-bold uppercase tracking-widest mb-1 ${color}`}>{label}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{(stats as any)[key] ?? 0}</p>
+          </button>
         ))}
       </div>
 
@@ -818,17 +902,17 @@ export const OrdersSection = () => {
         onFilterChange={handleDeliveryFilterChange}
       />
 
-      {/* Filters row */}
+      {/* Filters */}
       <Card className="bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800">
         <CardContent className="p-4 flex flex-col sm:flex-row gap-3">
-          <div className="flex-1 flex items-center gap-2 bg-gray-100 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2">
-            <Search className="w-4 h-4 text-gray-600" />
+          <div className="flex-1 flex items-center gap-2 bg-gray-50 dark:bg-zinc-800/60 border border-gray-200 dark:border-zinc-700 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-amber-400/30 focus-within:border-amber-400 transition">
+            <Search className="w-4 h-4 text-gray-400 dark:text-zinc-500 flex-shrink-0" />
             <input
               type="text"
-              placeholder="Rechercher par nom, téléphone, ID ou NID Intigo..."
+              placeholder="Rechercher par nom, téléphone, ID ou NID Intigo…"
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
-              className="flex-1 bg-transparent text-sm outline-none"
+              className="flex-1 bg-transparent text-sm outline-none text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-zinc-600"
             />
           </div>
 
@@ -846,8 +930,8 @@ export const OrdersSection = () => {
             </Select>
           </div>
 
-          <div className="w-full sm:w-48">
-            <Select value={deliveryFilter} onValueChange={(v) => { handleDeliveryFilterChange(v as DeliveryFilter); }}>
+          <div className="w-full sm:w-52">
+            <Select value={deliveryFilter} onValueChange={(v) => handleDeliveryFilterChange(v as DeliveryFilter)}>
               <SelectTrigger><SelectValue placeholder="Livraison" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toutes les livraisons</SelectItem>
@@ -859,7 +943,7 @@ export const OrdersSection = () => {
             </Select>
           </div>
 
-          <Button variant="outline" onClick={resetFilters}>
+          <Button variant="outline" onClick={resetFilters} className="flex-shrink-0">
             <Filter className="w-4 h-4 mr-2" />Réinitialiser
           </Button>
         </CardContent>
@@ -867,64 +951,85 @@ export const OrdersSection = () => {
 
       {/* Orders table */}
       <Card className="bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800">
-        <CardContent className="p-4">
-          <div className="border border-gray-200 dark:border-zinc-800 rounded-lg overflow-hidden relative min-h-[300px]">
+        <CardContent className="p-0">
+          <div className="relative min-h-[300px]">
             {(isLoading || isBulkUpdating) && (
-              <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
+              <div className="absolute inset-0 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
+                <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg px-4 py-2.5 shadow-sm">
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                  <span className="text-sm text-gray-600 dark:text-zinc-400">Chargement…</span>
+                </div>
               </div>
             )}
             <Table>
-              <TableHeader className="bg-gray-50 dark:bg-zinc-900/50">
+              <TableHeader className="bg-gray-50 dark:bg-zinc-900/80 border-b border-gray-200 dark:border-zinc-800">
                 <TableRow>
-                  <TableHead className="w-8 px-4 py-3">
-                    <Checkbox checked={selectedOrders.size === orders.length && orders.length > 0} onCheckedChange={handleSelectAll} />
+                  <TableHead className="w-10 px-4 py-3">
+                    <Checkbox
+                      checked={selectedOrders.size === orders.length && orders.length > 0}
+                      onCheckedChange={handleSelectAll}
+                    />
                   </TableHead>
-                  <TableHead className="text-xs font-semibold">N° Commande</TableHead>
-                  <TableHead className="text-xs font-semibold">Client</TableHead>
-                  <TableHead className="text-xs font-semibold">Date</TableHead>
-                  <TableHead className="text-xs font-semibold">Statut</TableHead>
-                  <TableHead className="text-right text-xs font-semibold">Total</TableHead>
+                  <TableHead className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider py-3">N° Cmd</TableHead>
+                  <TableHead className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider py-3">Client</TableHead>
+                  <TableHead className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider py-3 hidden sm:table-cell">Date</TableHead>
+                  <TableHead className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider py-3">Statut</TableHead>
+                  <TableHead className="text-right text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider py-3">Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {orders.length === 0 && !isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-gray-500">Aucune commande trouvée.</TableCell>
+                    <TableCell colSpan={6} className="text-center py-16 text-gray-400 dark:text-zinc-500">
+                      <div className="flex flex-col items-center gap-2">
+                        <Package className="w-8 h-8 opacity-30" />
+                        <p className="text-sm">Aucune commande trouvée</p>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ) : orders.map((order) => {
                   const isIntigoApi   = order.delivery_method === 'intigo' && !!order.intigo?.nid;
                   const isIntigoExcel = isIntigoExcelOrder(order);
+                  const isSelected    = selectedOrders.has(order._id);
 
                   return (
                     <TableRow
                       key={order._id}
-                      className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-900/50 ${selectedOrders.has(order._id) ? 'bg-amber-50 dark:bg-amber-900/10' : ''}`}
+                      className={`border-b border-gray-100 dark:border-zinc-800/60 cursor-pointer transition-colors duration-100 ${isSelected ? 'bg-amber-50/60 dark:bg-amber-900/10' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/40'}`}
                       onClick={() => handleSelectOrder(order._id)}
                     >
-                      <TableCell className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <Checkbox checked={selectedOrders.has(order._id)} onCheckedChange={() => handleSelectOrder(order._id)} />
+                      <TableCell className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={isSelected} onCheckedChange={() => handleSelectOrder(order._id)} />
                       </TableCell>
-                      <TableCell
-                        className="text-sm font-medium text-amber-600 hover:underline py-3"
-                        onClick={(e) => { e.stopPropagation(); handleOpenDetails(order._id); }}
-                      >
-                        #{order._id?.substring(order._id.length - 6).toUpperCase()}
+
+                      <TableCell className="py-3.5" onClick={(e) => { e.stopPropagation(); handleOpenDetails(order._id); }}>
+                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline underline-offset-2 font-mono">
+                          #{order._id?.substring(order._id.length - 6).toUpperCase()}
+                        </span>
                       </TableCell>
-                      <TableCell className="text-sm py-3">
-                        {order.customer?.first_name ?? 'Client'} {order.customer?.last_name ?? ''}
+
+                      <TableCell className="py-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <CustomerAvatar firstName={order.customer?.first_name} lastName={order.customer?.last_name} />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                              {order.customer?.first_name ?? 'Client'} {order.customer?.last_name ?? ''}
+                            </p>
+                            <p className="text-[11px] text-gray-400 dark:text-zinc-500 truncate">{order.customer?.phone}</p>
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600 dark:text-zinc-400 py-3">
+
+                      <TableCell className="text-xs text-gray-500 dark:text-zinc-400 py-3.5 hidden sm:table-cell">
                         {order.created_at ? new Date(order.created_at).toLocaleDateString('fr-FR') : 'N/A'}
                       </TableCell>
-                      <TableCell className="py-3">
+
+                      <TableCell className="py-3.5">
                         <div className="flex flex-col gap-1">
                           <StatusBadge status={order.status} />
-                          {/* API chip — always shown when NID exists, never depends on label */}
                           {isIntigoApi && (
                             <IntigoStatusChip
-                              isApi
-                              nid={order.intigo?.nid}
+                              isApi nid={order.intigo?.nid}
                               label={order.intigo?.status_label}
                               eventType={order.intigo?.event_type ?? undefined}
                             />
@@ -932,8 +1037,11 @@ export const OrdersSection = () => {
                           {isIntigoExcel && <IntigoStatusChip isExcel />}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right text-sm font-semibold py-3">
-                        DT{(order.total_amount ?? 0).toFixed(2)}
+
+                      <TableCell className="text-right py-3.5 pr-4">
+                        <span className="text-sm font-bold text-gray-900 dark:text-white tabular-nums">
+                          DT{(order.total_amount ?? 0).toFixed(2)}
+                        </span>
                       </TableCell>
                     </TableRow>
                   );
@@ -943,13 +1051,17 @@ export const OrdersSection = () => {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between mt-4 text-sm text-gray-600 dark:text-zinc-400">
-            <span>Total : {totalOrders} commande{totalOrders !== 1 ? 's' : ''}</span>
-            <div className="flex gap-2 items-center">
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-zinc-800">
+            <span className="text-xs text-gray-400 dark:text-zinc-500">
+              {totalOrders} commande{totalOrders !== 1 ? 's' : ''} au total
+            </span>
+            <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" disabled={pagination.currentPage <= 1 || isLoading} onClick={() => setPage(p => p - 1)}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              <span>Page {pagination.currentPage} / {pagination.totalPages}</span>
+              <span className="text-xs text-gray-600 dark:text-zinc-400 tabular-nums px-1">
+                {pagination.currentPage} / {pagination.totalPages}
+              </span>
               <Button variant="outline" size="sm" disabled={pagination.currentPage >= pagination.totalPages || isLoading} onClick={() => setPage(p => p + 1)}>
                 <ChevronRight className="w-4 h-4" />
               </Button>
@@ -979,8 +1091,9 @@ export const OrdersSection = () => {
         onExportIntigo={handleExportIntigo}
       />
 
+      {/* Export toast */}
       {exportToast && (
-        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-emerald-600 text-white text-sm font-medium px-5 py-3 rounded-lg shadow-xl animate-in slide-in-from-bottom-4">
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-xl animate-in slide-in-from-bottom-4 duration-200">
           <FileSpreadsheet className="w-4 h-4 flex-shrink-0" />
           {exportToast}
         </div>

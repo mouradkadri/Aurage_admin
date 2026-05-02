@@ -4,9 +4,14 @@ import { useState, useEffect, useCallback } from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface BilingualField {
+  en: string;
+  fr: string;
+}
+
 export interface Announcement {
   _id: string;
-  text: string;
+  text: BilingualField;
   is_active: boolean;
   display_order: number;
   created_at: string;
@@ -25,7 +30,8 @@ export function useAnnouncements() {
     setIsLoading(true);
     setError(null);
     try {
-      const res  = await fetch('/api/proxy/announcements');
+      // Note: Backend docs specify Route prefix is /api/Announcements with capital A
+      const res  = await fetch('/api/proxy/Announcements');
       const data = await res.json();
       if (data.success) {
         setAnnouncements(data.data);
@@ -44,9 +50,9 @@ export function useAnnouncements() {
   }, [fetchAnnouncements]);
 
   // ── Create ────────────────────────────────────────────────────────────────
-  const createAnnouncement = async (text: string): Promise<boolean> => {
+  const createAnnouncement = async (text: BilingualField): Promise<boolean> => {
     try {
-      const res = await fetch('/api/proxy/announcements', {
+      const res = await fetch('/api/proxy/Announcements', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ text, is_active: true, display_order: announcements.length }),
@@ -63,9 +69,9 @@ export function useAnnouncements() {
   };
 
   // ── Update text ───────────────────────────────────────────────────────────
-  const updateAnnouncement = async (id: string, text: string): Promise<boolean> => {
+  const updateAnnouncement = async (id: string, text: BilingualField): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/proxy/announcements/${id}`, {
+      const res = await fetch(`/api/proxy/Announcements/${id}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ text }),
@@ -88,7 +94,7 @@ export function useAnnouncements() {
       prev.map(a => a._id === id ? { ...a, is_active: !a.is_active } : a)
     );
     try {
-      const res = await fetch(`/api/proxy/announcements/${id}/toggle`, { method: 'PATCH' });
+      const res = await fetch(`/api/proxy/Announcements/${id}/toggle`, { method: 'PATCH' });
       const data = await res.json();
       if (!data.success) {
         await fetchAnnouncements(); // revert
@@ -104,7 +110,7 @@ export function useAnnouncements() {
   // ── Delete ────────────────────────────────────────────────────────────────
   const deleteAnnouncement = async (id: string): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/proxy/announcements/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/proxy/Announcements/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setAnnouncements(prev => prev.filter(a => a._id !== id));

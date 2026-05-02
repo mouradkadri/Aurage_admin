@@ -82,7 +82,7 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
     pickupAddresses,
     loadingPickup, loadingShip, loadingCancel,
     error, setError,
-    fetchPickupAddresses, shipViaIntigo, cancelIntigoParcel,
+    fetchPickupAddresses, shipViaIntigo,
   } = useIntigoDelivery();
 
   const [selectedPickupIndex, setSelectedPickupIndex] = useState('');
@@ -151,16 +151,7 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
     }
   };
 
-  const handleCancel = async () => {
-    if (!confirm('Annuler ce colis Intigo ?')) return;
-    const result = await cancelIntigoParcel(orderId);
-    if (result.success) {
-      setOptimisticNid(null);
-      setOptimisticShippedAt(null);
-      setSuccessMessage(result.message);
-      onShipped();
-    }
-  };
+ 
 
   // ── VIEW A: Shipped via API — has NID ──────────────────────────────────────
   if (isIntigoApi) {
@@ -215,14 +206,7 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
           </p>
         </div>
 
-        {canCancel && (
-          <Button variant="destructive" size="sm" onClick={handleCancel} disabled={loadingCancel} className="w-full">
-            {loadingCancel
-              ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              : <XCircle className="w-4 h-4 mr-2" />}
-            Annuler le colis Intigo
-          </Button>
-        )}
+       
 
         {error && (
           <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg px-3 py-2">{error}</p>

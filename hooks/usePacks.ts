@@ -5,11 +5,16 @@ import { useState, useEffect, useCallback } from 'react';
 
 // Define the shape of a single item within a Pack's content array.
 // The backend will populate the 'product' and 'bottle' details.
+export interface BilingualField {
+  en: string;
+  fr: string;
+}
+
 export interface PackContentDetail {
   _id: string;
   product: {
     _id: string;
-    name: string;
+    name: BilingualField;
   };
 
   quantity: number;
@@ -18,9 +23,9 @@ export interface PackContentDetail {
 // Define the shape of the Pack object returned from the API.
 export interface Pack {
   _id: string;
-  name: string;
+  name: BilingualField;
   slug: string;
-  description: string;
+  description: BilingualField;
   price: number;
   is_active: boolean;
   image?: {
