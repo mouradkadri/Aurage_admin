@@ -119,7 +119,10 @@ export function useIntigoDelivery() {
     setLoadingPickup(true);
     setError(null);
     try {
-      const res = await fetch('/api/proxy/delivery/intigo/pickup-addresses');
+      const token = localStorage.getItem('token') ?? sessionStorage.getItem('token') ?? '';
+const res = await fetch('/api/proxy/delivery/intigo/pickup-addresses', {
+  headers: { Authorization: `Bearer ${token}` },
+});
       const data = await res.json();
       console.log('[Intigo] Raw pickup response:', JSON.stringify(data, null, 2));
 

@@ -27,8 +27,11 @@ export const CollectionsSection: React.FC = () => {
   const filteredCollections = useMemo(() => {
     return collections.filter((col) => {
       const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = col.name?.[lang]?.toLowerCase().includes(searchLower) ||
-                           col.description?.[lang]?.toLowerCase().includes(searchLower);
+      const matchesSearch =
+  col.name?.en?.toLowerCase().includes(searchLower) ||
+  col.name?.fr?.toLowerCase().includes(searchLower) ||
+  col.description?.en?.toLowerCase().includes(searchLower) ||
+  col.description?.fr?.toLowerCase().includes(searchLower);
       
       const status = col.is_active ? 'active' : 'draft';
       const matchesStatus = statusFilter === 'all' || status === statusFilter;

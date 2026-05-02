@@ -526,8 +526,8 @@ const CustomerRetentionChart: React.FC<{
 
 // ─── DataTable ────────────────────────────────────────────────────────────────
 
-interface TableRow     { id: string; name: string; sales: number; revenue: number; }
-interface CancelledRow { id: string; name: string; totalSold: number; returnCount: number; returnRate: number; }
+interface TableRow     { id: string; name: string | { en?: string; fr?: string }; sales: number; revenue: number; }
+interface CancelledRow { id: string; name: string | { en?: string; fr?: string }; totalSold: number; returnCount: number; returnRate: number; }
 
 const DataTable: React.FC<{
   title: string;
@@ -581,8 +581,10 @@ const DataTable: React.FC<{
                         {rowIndex + 1}
                       </span>
                       <span className="font-medium text-gray-900 dark:text-white truncate max-w-[100px] sm:max-w-none">
-                        {item.name}
-                      </span>
+  {typeof item.name === 'object'
+    ? (item.name as any).en || (item.name as any).fr || '—'
+    : item.name}
+</span>
                     </div>
                   </td>
 

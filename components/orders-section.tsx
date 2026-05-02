@@ -602,6 +602,7 @@ const OrderDetailsSheet: React.FC<{
                       {(!order.items || order.items.length === 0) ? (
                         <TableRow>
                           <TableCell colSpan={3} className="text-center py-8 text-sm text-gray-400">Aucun article.</TableCell>
+                          <TableCell colSpan={3} className="text-center py-8 text-sm text-gray-400">Aucun article.</TableCell>
                         </TableRow>
                       ) : order.items.map((item, idx) => (
                         <TableRow key={item._id ?? idx} className="border-b border-gray-100 dark:border-zinc-800/60 last:border-0">
@@ -701,13 +702,15 @@ const OrderDetailsSheet: React.FC<{
 
               {/* Intigo shipping panel */}
               <IntigoShippingPanel
-                orderId={order._id}
-                orderStatus={order.status}
-                deliveryMethod={order.delivery_method}
-                shippingAddress={order.shipping_address}
-                intigo={order.intigo}
-                onShipped={onShipRefresh}
-              />
+  orderId={order._id}
+  orderStatus={order.status}
+  deliveryMethod={order.delivery_method}
+  items={order.items}
+  totalAmount={order.total_amount}
+  shippingAddress={order.shipping_address}
+  intigo={order.intigo}
+  onShipped={onShipRefresh}
+/>
 
               <Separator className="bg-gray-100 dark:bg-zinc-800" />
 

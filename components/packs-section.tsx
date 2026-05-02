@@ -26,8 +26,10 @@ export const PacksSection: React.FC = () => {
     return packs.filter((pack) => {
       const searchLower = searchTerm.toLowerCase();
       const matchesSearch =
-        pack.name?.[lang]?.toLowerCase().includes(searchLower) ||
-        pack.description?.[lang]?.toLowerCase().includes(searchLower);
+  pack.name?.en?.toLowerCase().includes(searchLower) ||
+  pack.name?.fr?.toLowerCase().includes(searchLower) ||
+  pack.description?.en?.toLowerCase().includes(searchLower) ||
+  pack.description?.fr?.toLowerCase().includes(searchLower);
       const status = pack.is_active ? 'active' : 'draft';
       const matchesStatus = statusFilter === 'all' || status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -106,8 +108,19 @@ export const PacksSection: React.FC = () => {
                   ) : filteredPacks.length > 0 ? (
                     filteredPacks.map((pack) => (
                       <TableRow key={pack._id}>
-                       
-                        <TableCell>{pack.content.length}</TableCell>
+  <TableCell className="font-medium">
+    <div>
+      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+        {pack.name?.en}
+      </p>
+      {pack.name?.fr && (
+        <p className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5">
+          {pack.name.fr}
+        </p>
+      )}
+    </div>
+  </TableCell>
+  <TableCell>{pack.content.length}</TableCell>
                         <TableCell>€{pack.price.toFixed(2)}</TableCell>
                         <TableCell>
                           <Badge

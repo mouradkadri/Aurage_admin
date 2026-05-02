@@ -16,6 +16,8 @@ interface IntigoShippingPanelProps {
   orderId:         string;
   orderStatus:     string;
   deliveryMethod?: string;
+  items?:          any[];
+  totalAmount?:    number;
   shippingAddress?: {
     governorate?:    string;
     governorate_id?: number;
@@ -76,7 +78,7 @@ const TsRow: React.FC<{ label: string; value: string | null; color?: string }> =
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
-  orderId, orderStatus, deliveryMethod, shippingAddress, intigo, onShipped,
+  orderId, orderStatus, deliveryMethod, items, totalAmount, shippingAddress, intigo, onShipped,
 }) => {
   const {
     pickupAddresses,
@@ -87,18 +89,33 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
 
   const [selectedPickupIndex, setSelectedPickupIndex] = useState('');
   const [packageSize, setPackageSize]                 = useState('1');
-  const [additionalInfo, setAdditionalInfo]           = useState('');
-  const [canOpen, setCanOpen]                         = useState(false);
-  const [successMessage, setSuccessMessage]           = useState<string | null>(null);
+
+  const resolveN = (f: any): string => {
+    if (!f) return '';
+    if (typeof f === 'string') return f;
+    return f.fr || f.en || '';
+  };
+
+  const buildItemLabel = (): string => {
+    const first = items?.[0];
+    if (!first) return '';
+    const label = first.pack
+      ? resolveN(first.pack?.name)
+      : resolveN(first.product?.name);
+    const extra = (items?.length ?? 1) - 1;
+    const suffix = extra > 0 ? ` +${extra} autre${extra > 1 ? 's' : ''}` : '';
+    return `${label}${suffix} — ${(totalAmount ?? 0).toFixed(2)} DT`;
+  };
+
+  const [additionalInfo, setAdditionalInfo] = useState(() => buildItemLabel());
+  const [canOpen, setCanOpen]               = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // ── Optimistic NID state ────────────────────────────────────────────────────
-  // Set immediately on successful ship so View A renders without waiting for
-  // the background refetch to complete. Cleared on cancel.
   const [optimisticNid, setOptimisticNid]             = useState<string | null>(null);
   const [optimisticShippedAt, setOptimisticShippedAt] = useState<string | null>(null);
 
-  // Merge optimistic values over the prop — optimistic wins while set
-  const effectiveNid      = optimisticNid      ?? intigo?.nid      ?? null;
+  const effectiveNid       = optimisticNid       ?? intigo?.nid       ?? null;
   const effectiveShippedAt = optimisticShippedAt ?? intigo?.shipped_at ?? null;
 
   // ── Derived view flags ──────────────────────────────────────────────────────
@@ -112,7 +129,6 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
     if (canShip && !missingIds) fetchPickupAddresses();
   }, [canShip, missingIds, fetchPickupAddresses]);
 
-  // Auto-select single pickup point
   useEffect(() => {
     if (pickupAddresses.length === 1 && selectedPickupIndex === '') {
       setSelectedPickupIndex(pickupAddresses[0].index.toString());
@@ -141,22 +157,16 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
     });
 
     if (result.success) {
-      // Switch to View A immediately — don't wait for the refetch round-trip
       const nid = (result as any).nid ?? 'N/A';
       setOptimisticNid(nid);
       setOptimisticShippedAt(new Date().toISOString());
       setSuccessMessage(result.message);
-      // Background refetch keeps the table row and stats card in sync
       onShipped();
     }
   };
 
- 
-
   // ── VIEW A: Shipped via API — has NID ──────────────────────────────────────
   if (isIntigoApi) {
-    // Allow cancel unless delivered/returned/cancelled. While optimistic
-    // (status_code is null) we default to allowing cancel.
     const canCancel = intigo?.status_code != null
       ? ![5000, 6900, 1100].includes(intigo.status_code)
       : true;
@@ -174,7 +184,6 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
           </div>
         </div>
 
-        {/* Parcel card */}
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/50 p-4 space-y-3">
           <div>
             <p className="text-xs text-gray-500 dark:text-zinc-500 mb-1">Numéro de suivi (NID)</p>
@@ -190,7 +199,6 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
           </div>
         </div>
 
-        {/* Static dashboard notice — no live tracking, same UX as Excel */}
         <div className="flex items-start gap-2.5 p-3 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700">
           <Clock className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-gray-500 dark:text-zinc-400">
@@ -205,8 +213,6 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
             </a>
           </p>
         </div>
-
-       
 
         {error && (
           <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg px-3 py-2">{error}</p>
@@ -301,7 +307,6 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
       {!missingIds && (
         <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-4">
 
-          {/* Pre-filled destination */}
           <div className="p-3 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700">
             <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 mb-1">Destination</p>
             <p className="text-sm font-medium text-gray-900 dark:text-white">
@@ -316,7 +321,6 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
 
           <Separator className="bg-gray-100 dark:bg-zinc-800" />
 
-          {/* Pickup address */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-gray-700 dark:text-zinc-300">
               Point de collecte <span className="text-red-500">*</span>
@@ -349,7 +353,6 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
             )}
           </div>
 
-          {/* Package size */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-gray-700 dark:text-zinc-300">Taille du colis</label>
             <Select value={packageSize} onValueChange={setPackageSize}>
@@ -362,13 +365,12 @@ export const IntigoShippingPanel: React.FC<IntigoShippingPanelProps> = ({
             </Select>
           </div>
 
-          {/* Instructions */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-gray-700 dark:text-zinc-300">
-              Instructions <span className="text-gray-400">(facultatif)</span>
+              Description colis <span className="text-gray-400">(modifiable)</span>
             </label>
             <textarea value={additionalInfo} onChange={e => setAdditionalInfo(e.target.value)}
-              placeholder="Ex : Appeler avant livraison..." rows={2} maxLength={500}
+              rows={2} maxLength={500}
               className="w-full px-3 py-2 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm bg-transparent resize-none" />
           </div>
 

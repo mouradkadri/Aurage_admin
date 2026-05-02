@@ -2,10 +2,9 @@
 
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import {
   Edit2, Plus, Trash2, Layout,
-  Image as ImageIcon, Menu, FileText,
+  Menu, FileText,
   Monitor, Megaphone, Loader2, Check, X,
 } from 'lucide-react';
 import { useAnnouncements } from '@/hooks/useAnnouncements';
@@ -15,15 +14,17 @@ import type { Announcement } from '@/hooks/useAnnouncements';
 
 const AnnouncementRow: React.FC<{
   item: Announcement;
-  onToggle:  (id: string) => void;
-  onDelete:  (id: string) => void;
-  onSave:    (id: string, text: string) => void;
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+  onSave:   (id: string, text: { en: string; fr: string }) => void;
 }> = ({ item, onToggle, onDelete, onSave }) => {
   const [editing, setEditing] = useState(false);
-  const [draft,   setDraft]   = useState(item.text);
+  const [draft, setDraft] = useState<{ en: string; fr: string }>(item.text);
 
   const handleSave = () => {
-    if (draft.trim() && draft !== item.text) onSave(item._id, draft.trim());
+    if (!draft.en.trim()) return;
+    const changed = draft.en !== item.text.en || draft.fr !== item.text.fr;
+    if (changed) onSave(item._id, { en: draft.en.trim(), fr: draft.fr.trim() });
     setEditing(false);
   };
 
@@ -35,80 +36,120 @@ const AnnouncementRow: React.FC<{
   return (
     <Card className="bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800">
       <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          {/* Status dot */}
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${item.is_active ? 'bg-green-500' : 'bg-gray-300 dark:bg-zinc-600'}`} />
+        {editing ? (
+          /* ── Edit mode: two side-by-side inputs ── */
+          <div className="space-y-3">
+            <div className="flex gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wide mb-1">
+                  English <span className="text-red-400">*</span>
+                </p>
+                <input
+                  autoFocus
+                  value={draft.en}
+                  onChange={e => setDraft(d => ({ ...d, en: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') handleCancel(); }}
+                  placeholder="English text…"
+                  className="w-full text-sm bg-gray-50 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/40"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wide mb-1">
+                  Français
+                </p>
+                <input
+                  value={draft.fr}
+                  onChange={e => setDraft(d => ({ ...d, fr: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') handleCancel(); }}
+                  placeholder="Texte en français…"
+                  className="w-full text-sm bg-gray-50 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 outline-none focus:ring-2 focus:ring-amber-500/40"
+                />
+              </div>
+            </div>
 
-          {/* Text / edit input */}
-          {editing ? (
-            <input
-              autoFocus
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') handleCancel(); }}
-              className="flex-1 text-sm bg-gray-50 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/40"
-            />
-          ) : (
-            <span className={`flex-1 text-sm ${item.is_active ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-zinc-500 line-through'}`}>
-              {item.text}
-            </span>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {editing ? (
-              <>
-                <button
-                  onClick={handleSave}
-                  className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
-                  title="Save"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={handleCancel}
-                  className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                  title="Cancel"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </>
-            ) : (
-              <>
-                {/* Toggle active */}
-                <button
-                  onClick={() => onToggle(item._id)}
-                  className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors ${
-                    item.is_active
-                      ? 'text-green-600 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30'
-                      : 'text-gray-400 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                  }`}
-                  title={item.is_active ? 'Deactivate' : 'Activate'}
-                >
-                  {item.is_active ? 'Live' : 'Off'}
-                </button>
-
-                {/* Edit */}
-                <button
-                  onClick={() => { setDraft(item.text); setEditing(true); }}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                  title="Edit"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-
-                {/* Delete */}
-                <button
-                  onClick={() => onDelete(item._id)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
-                  title="Delete"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </>
-            )}
+            <div className="flex justify-end items-center gap-2">
+              <span className="text-[10px] text-gray-400 dark:text-zinc-600">
+                EN required · FR optional
+              </span>
+              <button
+                onClick={handleSave}
+                disabled={!draft.en.trim()}
+                className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40 transition-colors"
+                title="Save"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleCancel}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                title="Cancel"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* ── Display mode ── */
+          <div className="flex items-center gap-3">
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                item.is_active ? 'bg-green-500' : 'bg-gray-300 dark:bg-zinc-600'
+              }`}
+            />
+
+            <div className="flex-1 min-w-0">
+              <span
+                className={`text-sm block truncate ${
+                  item.is_active
+                    ? 'text-gray-900 dark:text-white'
+                    : 'text-gray-400 dark:text-zinc-500 line-through'
+                }`}
+              >
+                {item.text.en || (
+                  <span className="italic text-gray-400 dark:text-zinc-600">No English text</span>
+                )}
+              </span>
+              {item.text.fr && (
+                <span className="text-xs text-gray-400 dark:text-zinc-500 block truncate mt-0.5">
+                  {item.text.fr}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {/* Toggle active */}
+              <button
+                onClick={() => onToggle(item._id)}
+                className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors ${
+                  item.is_active
+                    ? 'text-green-600 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30'
+                    : 'text-gray-400 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                }`}
+                title={item.is_active ? 'Deactivate' : 'Activate'}
+              >
+                {item.is_active ? 'Live' : 'Off'}
+              </button>
+
+              {/* Edit */}
+              <button
+                onClick={() => { setDraft(item.text); setEditing(true); }}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                title="Edit"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Delete */}
+              <button
+                onClick={() => onDelete(item._id)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                title="Delete"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -117,16 +158,21 @@ const AnnouncementRow: React.FC<{
 // ─── Add row ──────────────────────────────────────────────────────────────────
 
 const AddAnnouncementRow: React.FC<{
-  onAdd: (text: string) => void;
+  onAdd: (text: { en: string; fr: string }) => void;
 }> = ({ onAdd }) => {
   const [open, setOpen] = useState(false);
-  const [text, setText] = useState('');
+  const [text, setText] = useState<{ en: string; fr: string }>({ en: '', fr: '' });
 
   const handleAdd = () => {
-    if (!text.trim()) return;
-    onAdd(text.trim());
-    setText('');
+    if (!text.en.trim()) return;
+    onAdd({ en: text.en.trim(), fr: text.fr.trim() });
+    setText({ en: '', fr: '' });
     setOpen(false);
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    setText({ en: '', fr: '' });
   };
 
   if (!open) {
@@ -143,25 +189,46 @@ const AddAnnouncementRow: React.FC<{
 
   return (
     <Card className="bg-white dark:bg-zinc-900 border-amber-300 dark:border-amber-700 border-2">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <input
-            autoFocus
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') { setOpen(false); setText(''); } }}
-            placeholder="e.g. Free shipping in Tunis ✦ New collection available"
-            className="flex-1 text-sm bg-gray-50 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 outline-none focus:ring-2 focus:ring-amber-500/40"
-          />
+      <CardContent className="p-4 space-y-3">
+        <div className="flex gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wide mb-1">
+              English <span className="text-red-400">*</span>
+            </p>
+            <input
+              autoFocus
+              value={text.en}
+              onChange={e => setText(d => ({ ...d, en: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') handleClose(); }}
+              placeholder="e.g. Free shipping in Tunis ✦ New collection available"
+              className="w-full text-sm bg-gray-50 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 outline-none focus:ring-2 focus:ring-amber-500/40"
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-semibold text-gray-400 dark:text-zinc-500 uppercase tracking-wide mb-1">
+              Français
+            </p>
+            <input
+              value={text.fr}
+              onChange={e => setText(d => ({ ...d, fr: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') handleClose(); }}
+              placeholder="Livraison gratuite à Tunis ✦ Nouvelle collection…"
+              className="w-full text-sm bg-gray-50 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 outline-none focus:ring-2 focus:ring-amber-500/40"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end items-center gap-2">
+          <span className="text-[10px] text-gray-400 dark:text-zinc-600">EN required · FR optional</span>
           <button
             onClick={handleAdd}
-            disabled={!text.trim()}
+            disabled={!text.en.trim()}
             className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-xs font-semibold transition-colors"
           >
             Add
           </button>
           <button
-            onClick={() => { setOpen(false); setText(''); }}
+            onClick={handleClose}
             className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
@@ -203,7 +270,7 @@ const AnnouncementsTab: React.FC = () => {
           <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 dark:bg-zinc-950 rounded-lg text-xs text-white overflow-hidden max-w-xs">
             <Monitor className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
             <span className="truncate text-gray-300">
-              {announcements.filter(a => a.is_active).map(a => a.text).join(' · ')}
+              {announcements.filter(a => a.is_active).map(a => a.text.en).join(' · ')}
             </span>
           </div>
         )}

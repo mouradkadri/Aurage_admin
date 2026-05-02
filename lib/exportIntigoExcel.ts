@@ -45,32 +45,42 @@ const HEADER_WHITE   = { argb: 'FFFFFFFF' } as const;
 
 // ─── Build a row from an Order ────────────────────────────────────────────────
 
+function resolveN(f: any): string {
+  if (!f) return '';
+  if (typeof f === 'string') return f;
+  return f.fr || f.en || '';
+}
+
+function buildItemLabel(order: Order): string {
+  const first = order.items?.[0];
+  if (!first) return 'Article';
+  const label = first.pack
+    ? resolveN(first.pack.name)
+    : resolveN(first.product?.name);
+  const extra = (order.items?.length ?? 1) - 1;
+  const suffix = extra > 0 ? ` +${extra} autre${extra > 1 ? 's' : ''}` : '';
+  return `${label}${suffix} — ${order.total_amount.toFixed(2)} DT`;
+}
+
 function buildRow(order: Order): Record<string, string | number> {
   const c    = order.customer;
   const addr = order.shipping_address;
 
-  // Phone: strip everything except digits, take last 8
   const phone = (c?.phone ?? '').replace(/\D/g, '').slice(-8);
-
-  // Item names joined
-  const description = (order.items ?? [])
-    .map(item => item.pack?.name ?? item.product?.name ?? 'Article')
-    .join(', ');
 
   return {
     nom_destinataire:    `${c?.first_name ?? ''} ${c?.last_name ?? ''}`.trim(),
     telephone:           phone,
     telephone2:          '',
     adresse:             addr?.street ?? '',
-    // Intigo calls governorate "ville"
     ville:               addr?.governorate ?? addr?.city ?? '',
     district:            addr?.district ?? '',
     quartier:            '',
     montant:             Number(order.total_amount?.toFixed(3) ?? 0),
     taille_colis:        1,
     ouvrir_colis:        0,
-    description_produit: description,
-    info_supplementaire: `Cmd #${order._id.slice(-6).toUpperCase()}`,
+    description_produit: buildItemLabel(order),
+    info_supplementaire: `Aurage | ${new Date(order.created_at).toLocaleDateString('fr-FR')}`,
   };
 }
 
@@ -125,8 +135,11 @@ async function buildWorkbook(orders: Order[]): Promise<ExcelJS.Workbook> {
     wb.created  = new Date();
   }
 
-  // Always work on the first sheet ("Colis")
+ // Always work on the first sheet ("Colis")
   let ws = wb.getWorksheet('Colis') ?? wb.getWorksheet(1) ?? wb.addWorksheet('Colis');
+
+  // Clear all existing rows so template sample data doesn't bleed through
+  ws.spliceRows(1, ws.rowCount);
 
   // ── Header row ──────────────────────────────────────────────────────────
   ws.getRow(1).height = 32;

@@ -88,9 +88,11 @@ export const ProductsSection: React.FC = () => {
      result = products.filter((p) => {
         const searchLower = searchTerm.toLowerCase();
         const matchesSearch =
-          p.name[lang].toLowerCase().includes(searchLower) ||
-          p.slug?.toLowerCase().includes(searchLower) ||
-          p.description?.[lang]?.toLowerCase().includes(searchLower); 
+  p.name?.en?.toLowerCase().includes(searchLower) ||
+  p.name?.fr?.toLowerCase().includes(searchLower) ||
+  p.slug?.toLowerCase().includes(searchLower) ||
+  p.description?.en?.toLowerCase().includes(searchLower) ||
+  p.description?.fr?.toLowerCase().includes(searchLower);
         
         const pStatus = getStatus(p.liquid_stock_quantity);
         const matchesStatus = !statusFilter || pStatus === statusFilter;
