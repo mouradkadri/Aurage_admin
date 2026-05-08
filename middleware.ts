@@ -2,47 +2,41 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // 1. Get the token from the secure cookies
   const token = request.cookies.get('admin_access_token')?.value;
-  
-  // 2. Get the current URL path the user is trying to access
   const { pathname } = request.nextUrl;
 
-  // 3. Define paths that DO NOT require authentication
-  const isPublicRoute = 
-  pathname.startsWith('/login') || 
-  pathname.startsWith('/api/auth') || 
-  pathname.startsWith('/api/proxy'); 
+  // Only auth endpoints are truly public — everything else, including
+  // /api/proxy, requires a valid session cookie. This gives us two layers
+  // of protection on proxy routes: middleware rejects cookie-less requests
+  // before they even reach the proxy handler, and the proxy double-checks
+  // the cookie itself before forwarding to Express.
+  const isPublicRoute =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/api/auth');
 
-  // 4. If there is NO token and the user is NOT on a public route -> Redirect to Login
   if (!token && !isPublicRoute) {
+    // API routes get a 401 JSON response instead of a login redirect
+    // so client-side fetch calls handle it gracefully.
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const loginUrl = new URL('/login', request.url);
-    // Optional: Save the URL they were trying to visit so you can redirect them back later
-    // loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 5. If there IS a token and the user tries to go to the Login page -> Redirect to Dashboard
   if (token && pathname === '/login') {
-    const dashboardUrl = new URL('/', request.url);
-    return NextResponse.redirect(dashboardUrl);
+    return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // 6. Otherwise, allow the request to proceed normally
   return NextResponse.next();
 }
 
-// Configure which routes this middleware should run on
 export const config = {
-  matcher:[
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api/proxy (if you have proxy routes, let the proxy handle auth)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - any files with an extension (e.g., .svg, .png)
-     */
+  matcher: [
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

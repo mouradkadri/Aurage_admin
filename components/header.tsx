@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useAuth } from '@/context/AuthContext';
 import type { Notification } from '@/hooks/useNotifications';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -89,7 +90,6 @@ function NotificationItem({
       `}
     >
       <div className="flex gap-3 items-start">
-        {/* Icon — dimmed when read */}
         <div className={`
           w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5
           ${notif.is_read ? 'bg-gray-100 dark:bg-zinc-800' : config.bg}
@@ -108,7 +108,6 @@ function NotificationItem({
               <span className="text-[11px] text-gray-400 dark:text-zinc-500 tabular-nums">
                 {formatRelativeTime(notif.created_at)}
               </span>
-              {/* Dot only for unread */}
               {!notif.is_read && (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
               )}
@@ -156,8 +155,6 @@ function NotificationsPanel({
 }) {
   return (
     <div className="absolute right-0 mt-2 w-[22rem] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/40 z-50 overflow-hidden">
-
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-zinc-800">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -188,7 +185,6 @@ function NotificationsPanel({
         </div>
       </div>
 
-      {/* Body — scrollable */}
       <div className="max-h-[22rem] overflow-y-auto overscroll-contain">
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -206,12 +202,9 @@ function NotificationsPanel({
           </div>
         ) : (
           <>
-            {/* All notifications — read ones visible but visually dimmed */}
             {notifications.map(notif => (
               <NotificationItem key={notif._id} notif={notif} onRead={onMarkOne} />
             ))}
-
-            {/* Load more — inside scroll area */}
             {hasMore && (
               <button
                 onClick={onLoadMore}
@@ -228,7 +221,6 @@ function NotificationsPanel({
         )}
       </div>
 
-      {/* Footer */}
       {notifications.length > 0 && (
         <div className="px-4 py-2.5 border-t border-gray-100 dark:border-zinc-800">
           <button
@@ -251,6 +243,9 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const router   = useRouter();
 
+  // User info comes from the server via AuthContext — never from localStorage.
+  const { user, clear } = useAuth();
+
   const {
     notifications,
     unreadCount,
@@ -269,11 +264,13 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
     } catch {
       // proceed regardless
     } finally {
+      // Clear the in-memory user state so UI resets immediately.
+      // The httpOnly cookie is deleted server-side by the logout route.
+      clear();
       router.push('/login');
     }
   };
 
-  // Close on outside click
   useEffect(() => {
     if (!showNotifications) return;
     const handler = (e: MouseEvent) => {
@@ -285,7 +282,6 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
     return () => document.removeEventListener('mousedown', handler);
   }, [showNotifications]);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setShowNotifications(false);
@@ -298,7 +294,6 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
     <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-40 transition-colors hidden lg:block">
       <div className="flex items-center justify-between h-16 px-6">
 
-        {/* Title */}
         <div className="flex-1 min-w-0">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white truncate">
             {sectionTitle}
@@ -308,10 +303,8 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
           </p>
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-1.5">
 
-          {/* Theme Toggle */}
           <Button
             variant="ghost"
             size="icon"
@@ -321,8 +314,7 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </Button>
 
-          {/* Notifications Bell */}
-           <div className="relative" ref={panelRef}>
+          <div className="relative" ref={panelRef}>
             <button
               onClick={() => setShowNotifications(v => !v)}
               className="relative w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
@@ -339,14 +331,12 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
 
             {showNotifications && (
               <NotificationsPanel
-                // CHANGE 1: Slice the array to only show a maximum of 5 items
-                notifications={notifications.slice(0, 5)} 
+                notifications={notifications.slice(0, 5)}
                 unreadCount={unreadCount}
                 loading={loading}
                 loadingMore={loadingMore}
                 error={error}
-                // CHANGE 2: Set hasMore to false so the dropdown doesn't grow beyond 5
-                hasMore={false} 
+                hasMore={false}
                 onMarkOne={markOneRead}
                 onMarkAll={markAllRead}
                 onLoadMore={loadMore}
@@ -359,10 +349,8 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
             )}
           </div>
 
-          {/* Divider */}
           <div className="w-px h-6 bg-gray-200 dark:bg-zinc-800 mx-1" />
 
-          {/* User Profile */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -373,8 +361,13 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <div className="text-left">
-                  <div className="text-sm font-medium leading-tight">Aurage Admin</div>
-                  <div className="text-[11px] text-gray-500 dark:text-zinc-500 leading-tight">Administrator</div>
+                  {/* Display name/role from server — falls back gracefully while loading */}
+                  <div className="text-sm font-medium leading-tight">
+                    {user?.name || 'Admin'}
+                  </div>
+                  <div className="text-[11px] text-gray-500 dark:text-zinc-500 leading-tight capitalize">
+                    {user?.role || '—'}
+                  </div>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-500" />
               </Button>
@@ -383,6 +376,11 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
               align="end"
               className="w-48 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 rounded-xl shadow-lg shadow-black/10 dark:shadow-black/30"
             >
+              {user?.email && (
+                <div className="px-3 py-2 text-xs text-gray-400 dark:text-zinc-500 truncate border-b border-gray-100 dark:border-zinc-800 mb-1">
+                  {user.email}
+                </div>
+              )}
               <DropdownMenuItem
                 onClick={() => setShowNotifications(true)}
                 className="text-gray-700 dark:text-zinc-300 focus:bg-gray-100 dark:focus:bg-zinc-800 cursor-pointer rounded-lg mx-1 my-0.5"
