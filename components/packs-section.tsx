@@ -12,16 +12,18 @@ import { usePacks, Pack } from '@/hooks/usePacks';
 import { PackFormDrawer } from './PackFormDrawer';
 import { Input } from './ui/input';
 import { PackDetailsModal } from './PackDetailsModal';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export const PacksSection: React.FC = () => {
   const lang = 'fr';
   const { packs, isLoading, createPack, updatePack, deletePack } = usePacks();
+const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; id: string } | null>(null);
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingPack, setEditingPack]   = useState<Pack | null>(null);
   const [searchTerm, setSearchTerm]     = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-
+  
   const filteredPacks = useMemo(() => {
     return packs.filter((pack) => {
       const searchLower = searchTerm.toLowerCase();
@@ -38,11 +40,9 @@ export const PacksSection: React.FC = () => {
 
   const handleCreateClick = () => { setEditingPack(null); setIsDrawerOpen(true); };
   const handleEditClick   = (pack: Pack) => { setEditingPack(pack); setIsDrawerOpen(true); };
-  const handleDelete      = async (id: string) => {
-    if (confirm('Are you sure you want to delete this pack? This cannot be undone.')) {
-      await deletePack(id);
-    }
-  };
+  const handleDelete = (id: string) => {
+  setConfirmDialog({ open: true, id });
+};
   const handleFormSubmit = async (formData: FormData) =>
     editingPack ? updatePack(editingPack._id, formData) : createPack(formData);
 
@@ -169,6 +169,20 @@ export const PacksSection: React.FC = () => {
         onSubmit={handleFormSubmit}
         initialData={editingPack}
       />
+      {confirmDialog && (
+  <ConfirmDialog
+    open={confirmDialog.open}
+    title="Supprimer ce pack ?"
+    description="Cette action est irréversible. Le pack sera définitivement supprimé."
+    confirmLabel="Supprimer"
+    onConfirm={async () => {
+      const id = confirmDialog.id;
+      setConfirmDialog(null);
+      await deletePack(id);
+    }}
+    onCancel={() => setConfirmDialog(null)}
+  />
+)}
     </>
   );
 };

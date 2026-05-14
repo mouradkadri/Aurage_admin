@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ShoppingCart, AlertCircle, Package, CheckCheck, ArrowLeft, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -45,10 +45,19 @@ function formatRelativeTime(dateStr: string): string {
   });
 }
 
+
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function NotificationsPage() {
   const router = useRouter();
+  useEffect(() => {
+  const handler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') router.back();
+  };
+  document.addEventListener('keydown', handler);
+  return () => document.removeEventListener('keydown', handler);
+}, [router]);
   const {
     notifications,
     unreadCount,
@@ -75,11 +84,15 @@ export default function NotificationsPage() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => router.back()}
-              className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-zinc-800 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+  onClick={() => router.back()}
+  title="Retour (Échap)"
+  className="p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-zinc-800 transition-colors group relative"
+>
+  <ArrowLeft className="w-5 h-5" />
+  <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-[10px] bg-gray-900 text-white px-1.5 py-0.5 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+    Échap
+  </span>
+</button>
             <div>
               <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
                 Notifications

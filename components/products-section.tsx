@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ProductFormDrawer } from './ProductFormDrawer';
 import { BottleVariantFormDrawer } from './BottleVariantFormDrawer';
+import { ConfirmDialog } from './ConfirmDialog';
+
 import {
   Select,
   SelectContent,
@@ -66,6 +68,11 @@ export const ProductsSection: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [priceSort, setPriceSort] = useState<'asc' | 'desc' | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [confirmDialog, setConfirmDialog] = useState<{
+  open: boolean;
+  itemId: string;
+  label: string;
+} | null>(null);
   
   // --- Inline Edit State ---
   const [editingCell, setEditingCell] = useState<{ id: string; field: 'price' | 'inventory' } | null>(null);
@@ -76,6 +83,8 @@ export const ProductsSection: React.FC = () => {
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [isVariantDrawerOpen, setIsVariantDrawerOpen] = useState(false);
   const[variantToEdit, setVariantToEdit] = useState<BottleVariant | null>(null);
+  const [editToast, setEditToast] = useState<string | null>(null);
+
 
   const getStatus = (qty: number) => 
     qty > 20 ? 'in-stock' : qty > 0 ? 'low-stock' : 'out-of-stock';
@@ -162,38 +171,38 @@ export const ProductsSection: React.FC = () => {
 
   const saveEdit = async (itemId: string) => {
   if (!editingCell || editValue === '') return;
-  
+
   const isProduct = activeTab === 'products';
-  
-  // Create a new FormData object
   const formData = new FormData();
-  
+
   if (isProduct) {
     formData.append(editingCell.field === 'price' ? 'base_price' : 'liquid_stock_quantity', editValue);
     const success = await updateProduct(itemId, formData);
-    if (success) { setEditingCell(null); setEditValue(''); }
+    if (success) {
+      setEditingCell(null);
+      setEditValue('');
+      setEditToast(`✓ ${editingCell.field === 'price' ? 'Prix' : 'Stock'} mis à jour`);
+      setTimeout(() => setEditToast(null), 3000);
+    }
   } else {
-    // VARIANT: Add the specific field to FormData
     const fieldName = editingCell.field === 'price' ? 'price_adjustment' : 'global_stock_quantity';
     formData.append(fieldName, editValue);
-    
-    // Now you are passing FormData, which matches your updateBottleVariant signature
     const success = await updateBottleVariant(itemId, formData);
-    
-    if (success) { 
-      setEditingCell(null); 
-      setEditValue(''); 
-    } else { 
-      alert("Failed to update variant"); 
+    if (success) {
+      setEditingCell(null);
+      setEditValue('');
+      setEditToast(`✓ ${editingCell.field === 'price' ? 'Modificateur' : 'Stock'} mis à jour`);
+      setTimeout(() => setEditToast(null), 3000);
+    } else {
+      alert("Failed to update variant");
     }
   }
 };
 
-  const handleDelete = async (itemId: string) => {
-    if (confirm("Are you sure you want to delete this item?")) {
-        activeTab === 'products' ? await deleteProduct(itemId) : await deleteBottleVariant(itemId);
-    }
-  };
+  const handleDelete = (itemId: string) => {
+  const label = activeTab === 'products' ? 'ce produit' : 'ce flacon';
+  setConfirmDialog({ open: true, itemId, label });
+};
 
   return (
     <div className="space-y-6">
@@ -461,7 +470,27 @@ export const ProductsSection: React.FC = () => {
         onSubmit={handleVariantSubmit}
         initialData={variantToEdit}
       />
-
+{editToast && (
+  <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-xl animate-in slide-in-from-bottom-4 duration-200">
+    {editToast}
+  </div>
+)}
+{confirmDialog && (
+  <ConfirmDialog
+    open={confirmDialog.open}
+    title="Confirmer la suppression"
+    description={`Êtes-vous sûr de vouloir supprimer ${confirmDialog.label} ? Cette action est irréversible.`}
+    confirmLabel="Supprimer"
+    onConfirm={async () => {
+      const id = confirmDialog.itemId;
+      setConfirmDialog(null);
+      activeTab === 'products'
+        ? await deleteProduct(id)
+        : await deleteBottleVariant(id);
+    }}
+    onCancel={() => setConfirmDialog(null)}
+  />
+)}
     </div>
   );
 };

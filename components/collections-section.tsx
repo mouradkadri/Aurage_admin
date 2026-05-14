@@ -11,10 +11,12 @@ import { CollectionDetailsModal } from './CollectionDetailsModal';
 // Import real hook and drawer
 import { useCollections, Collection } from '@/hooks/useCollections';
 import { CollectionFormDrawer } from './CollectionFormDrawer'; 
+import { ConfirmDialog } from './ConfirmDialog';
 
 export const CollectionsSection: React.FC = () => {
   const lang = 'fr';
   const { collections, isLoading, createCollection, updateCollection, deleteCollection } = useCollections();
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; id: string } | null>(null);
 
   // Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -51,11 +53,9 @@ export const CollectionsSection: React.FC = () => {
     setIsDrawerOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this collection?')) {
-      await deleteCollection(id);
-    }
-  };
+  const handleDelete = (id: string) => {
+  setConfirmDialog({ open: true, id });
+};
 
   const handleFormSubmit = async (formData: FormData) => {
     if (editingCollection) {
@@ -203,6 +203,20 @@ export const CollectionsSection: React.FC = () => {
         onSubmit={handleFormSubmit}
         initialData={editingCollection}
       />
+      {confirmDialog && (
+  <ConfirmDialog
+    open={confirmDialog.open}
+    title="Supprimer cette collection ?"
+    description="Cette action est irréversible. La collection sera définitivement supprimée."
+    confirmLabel="Supprimer"
+    onConfirm={async () => {
+      const id = confirmDialog.id;
+      setConfirmDialog(null);
+      await deleteCollection(id);
+    }}
+    onCancel={() => setConfirmDialog(null)}
+  />
+)}
     </>
   );
 };

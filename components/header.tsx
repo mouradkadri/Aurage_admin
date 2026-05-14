@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Bell, User, ChevronDown, Moon, Sun, X,
-  ShoppingCart, AlertCircle, Package, CheckCheck, Loader2
+  ShoppingCart, AlertCircle, Package, CheckCheck, Loader2, Search
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
@@ -19,13 +19,9 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/context/AuthContext';
 import type { Notification } from '@/hooks/useNotifications';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 interface HeaderProps {
   sectionTitle: string;
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const TYPE_CONFIG: Record<
   Notification['type'],
@@ -51,8 +47,6 @@ const TYPE_CONFIG: Record<
   },
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function formatRelativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60_000);
@@ -64,8 +58,6 @@ function formatRelativeTime(dateStr: string): string {
   if (days < 7)  return `${days}d ago`;
   return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
-
-// ─── NotificationItem ─────────────────────────────────────────────────────────
 
 function NotificationItem({
   notif,
@@ -96,7 +88,6 @@ function NotificationItem({
         `}>
           <Icon className={`w-4 h-4 ${notif.is_read ? 'text-gray-400 dark:text-zinc-500' : config.color}`} />
         </div>
-
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <span className={`text-xs font-semibold tracking-wide uppercase ${
@@ -125,8 +116,6 @@ function NotificationItem({
     </button>
   );
 }
-
-// ─── NotificationsPanel ───────────────────────────────────────────────────────
 
 function NotificationsPanel({
   notifications,
@@ -235,15 +224,13 @@ function NotificationsPanel({
   );
 }
 
-// ─── Header ───────────────────────────────────────────────────────────────────
-
 export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
   const { theme, setTheme } = useTheme();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifToast, setNotifToast] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const router   = useRouter();
 
-  // User info comes from the server via AuthContext — never from localStorage.
   const { user, clear } = useAuth();
 
   const {
@@ -264,8 +251,6 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
     } catch {
       // proceed regardless
     } finally {
-      // Clear the in-memory user state so UI resets immediately.
-      // The httpOnly cookie is deleted server-side by the logout route.
       clear();
       router.push('/login');
     }
@@ -305,6 +290,23 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
 
         <div className="flex items-center gap-1.5">
 
+          {/* Command palette trigger */}
+          <button
+            onClick={() => {
+              document.dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true })
+              );
+            }}
+            className="hidden lg:flex items-center gap-2 px-3 h-8 text-xs text-gray-400 dark:text-zinc-500 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 border border-gray-200 dark:border-zinc-700 rounded-lg transition-colors mr-1"
+            title="Recherche rapide"
+          >
+            <Search className="w-3 h-3" />
+            <span>Sections</span>
+            <kbd className="text-[10px] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 px-1 rounded font-mono">
+              ⌘K
+            </kbd>
+          </button>
+
           <Button
             variant="ghost"
             size="icon"
@@ -338,7 +340,11 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
                 error={error}
                 hasMore={false}
                 onMarkOne={markOneRead}
-                onMarkAll={markAllRead}
+                onMarkAll={() => {
+                  markAllRead();
+                  setNotifToast('✓ Toutes les notifications marquées comme lues');
+                  setTimeout(() => setNotifToast(null), 3000);
+                }}
                 onLoadMore={loadMore}
                 onClose={() => setShowNotifications(false)}
                 onViewAll={() => {
@@ -361,7 +367,6 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <div className="text-left">
-                  {/* Display name/role from server — falls back gracefully while loading */}
                   <div className="text-sm font-medium leading-tight">
                     {user?.name || 'Admin'}
                   </div>
@@ -405,6 +410,13 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
 
         </div>
       </div>
+
+      {/* Notification toast */}
+      {notifToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-xl animate-in slide-in-from-bottom-4 duration-200">
+          {notifToast}
+        </div>
+      )}
     </header>
   );
 };

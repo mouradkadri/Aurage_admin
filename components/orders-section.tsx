@@ -525,13 +525,15 @@ const OrderDetailsSheet: React.FC<{
                   </div>
                 </div>
                 <Button
-                  variant="outline" size="sm"
-                  onClick={handlePrintInvoice} disabled={isPrinting}
-                  className="flex-shrink-0 flex items-center gap-2 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700/50 dark:text-amber-400 dark:hover:bg-amber-900/20"
-                >
-                  {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-                  <span className="hidden sm:block">Facture PDF</span>
-                </Button>
+  variant="outline" size="sm"
+  onClick={handlePrintInvoice} disabled={isPrinting}
+  className="flex-shrink-0 flex items-center gap-2 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700/50 dark:text-amber-400 dark:hover:bg-amber-900/20"
+>
+  {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+  <span className="hidden sm:block">
+    {isPrinting ? 'Génération...' : 'Facture PDF'}
+  </span>
+</Button>
               </div>
 
               {/* Status pills row */}
@@ -828,16 +830,18 @@ export const OrdersSection = () => {
   };
 
   const handleBulkAction = async (newStatus: string) => {
-    if (!window.confirm(`Marquer ${selectedOrders.size} commande(s) comme "${statusFr(newStatus)}" ?`)) return;
-    setIsBulkUpdating(true);
-    try {
-      await Promise.all(Array.from(selectedOrders).map(id =>
-        updateOrderStatus(id, newStatus, `Mise à jour groupée → ${statusFr(newStatus)}`)));
-      setSelectedOrders(new Set());
-      doFetch();
-    } finally { setIsBulkUpdating(false); }
-  };
-
+  const count = selectedOrders.size;
+  if (!window.confirm(`Marquer ${count} commande(s) comme "${statusFr(newStatus)}" ?`)) return;
+  setIsBulkUpdating(true);
+  try {
+    await Promise.all(Array.from(selectedOrders).map(id =>
+      updateOrderStatus(id, newStatus, `Mise à jour groupée → ${statusFr(newStatus)}`)));
+    setSelectedOrders(new Set());
+    doFetch();
+    setExportToast(`✓ ${count} commande(s) marquée(s) comme "${statusFr(newStatus)}"`);
+    setTimeout(() => setExportToast(null), 5000);
+  } finally { setIsBulkUpdating(false); }
+};
   const handleBulkPrintInvoices = async () => {
     if (selectedOrders.size === 0) return;
     setIsBulkPrinting(true);
