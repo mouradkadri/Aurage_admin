@@ -23,7 +23,7 @@ const sectionTitles: Record<string, string> = {
   collections: 'Collection Management',
   orders: 'Order Management',
   storefront: 'Storefront Management',
-  settings: 'Settings',
+
 };
 
 export default function Dashboard() {
@@ -47,7 +47,7 @@ const sections = [
   { id: 'collections', label: 'Collection Management',    icon: Layers      },
   { id: 'orders',      label: 'Order Management',         icon: ShoppingCart},
   { id: 'storefront',  label: 'Storefront Management',    icon: Globe       },
-  { id: 'settings',    label: 'Settings',                 icon: Settings    },
+ 
 ];
   // The rendering logic remains exactly the same
   const renderSection = () => {
@@ -58,7 +58,7 @@ const sections = [
       case 'collections': return <CollectionsSection />;
       case 'orders': return <OrdersSection />;
       case 'storefront': return <StorefrontSection />;
-      case 'settings': return <SettingsSection />;
+     
       default: return <AnalyticsSection />;
     }
   };
