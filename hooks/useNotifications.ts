@@ -21,21 +21,23 @@ export function useNotifications() {
   const [error, setError]                 = useState(false);
   const [hasMore, setHasMore]             = useState(false);
   const [page, setPage]                   = useState(1);
-  const retryCount = useRef(0);
-  const retryTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const retryCount    = useRef(0);
+  const retryTimeout  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const unmountedRef  = useRef(false);
 
   // ── Initial fetch ─────────────────────────────────────────────────────────
   const fetchNotifications = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res  = await fetch('/api/proxy/notifications?page=1');
+      const res = await fetch('/api/proxy/notifications?page=1');
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       if (data.success) {
         setNotifications(data.data);
         setUnreadCount(data.unreadCount);
-        setHasMore(data.pagination.hasMore);
+        setHasMore(data.pagination?.hasMore ?? false);
         setPage(1);
         setError(false);
       }
@@ -46,32 +48,50 @@ export function useNotifications() {
     }
   }, []);
 
-  // ── SSE with exponential backoff ──────────────────────────────────────────
-  useEffect(() => {
-    fetchNotifications();
+  // ── SSE connection ────────────────────────────────────────────────────────
+  // We use a polling fallback instead of SSE when the stream returns a non-2xx
+  // status (e.g. 500) or the connection drops, to avoid ERR_INCOMPLETE_CHUNKED_ENCODING
+  // spamming the console with rapid reconnects.
+  const connectSSE = useCallback(() => {
+    if (unmountedRef.current) return;
 
-    let unmounted = false;
+    // Close any existing connection first
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
 
-    function connectSSE() {
-      if (unmounted) return;
+    // Give up after 5 retries and fall back to polling
+    if (retryCount.current >= 5) {
+      console.warn('[SSE] Max retries reached — switching to 30s polling');
+      // Poll every 30 seconds as fallback
+      retryTimeout.current = setTimeout(() => {
+        if (!unmountedRef.current) {
+          retryCount.current = 0; // reset so SSE is tried again
+          fetchNotifications(true);
+          connectSSE();
+        }
+      }, 30_000);
+      return;
+    }
 
-      // Clean up any existing connection
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-
+    try {
       const es = new EventSource('/api/proxy/notifications/stream');
       eventSourceRef.current = es;
 
       es.onopen = () => {
         console.log('[SSE] Connected');
-        retryCount.current = 0; // Reset backoff on successful connection
+        retryCount.current = 0;
       };
 
       es.onmessage = (event) => {
+        // Ignore heartbeat/ping messages
+        if (!event.data || event.data === 'ping' || event.data === ':') return;
         try {
-          const newNotif: Notification = JSON.parse(event.data);
+          const parsed = JSON.parse(event.data);
+          // Some backends send { type: 'ping' } as keepalive
+          if (parsed.type === 'ping') return;
+          const newNotif: Notification = parsed;
           setNotifications(prev => [newNotif, ...prev]);
           setUnreadCount(prev => prev + 1);
         } catch {
@@ -83,24 +103,32 @@ export function useNotifications() {
         es.close();
         eventSourceRef.current = null;
 
-        if (unmounted) return;
+        if (unmountedRef.current) return;
 
-        // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
-        const delay = Math.min(2000 * Math.pow(2, retryCount.current), 30000);
+        // Exponential backoff: 3s, 6s, 12s, 24s, 48s — then fall back to polling
+        const delay = Math.min(3_000 * Math.pow(2, retryCount.current), 48_000);
         retryCount.current += 1;
 
-        console.warn(`[SSE] Connection lost. Reconnecting in ${delay / 1000}s...`);
+        console.warn(`[SSE] Connection lost. Retry ${retryCount.current}/5 in ${delay / 1000}s`);
 
         retryTimeout.current = setTimeout(() => {
-          if (!unmounted) connectSSE();
+          if (!unmountedRef.current) connectSSE();
         }, delay);
       };
+    } catch (err) {
+      // EventSource constructor can throw if URL is invalid
+      console.error('[SSE] Failed to create EventSource:', err);
     }
+  }, [fetchNotifications]);
 
+  useEffect(() => {
+    unmountedRef.current = false;
+
+    fetchNotifications();
     connectSSE();
 
     return () => {
-      unmounted = true;
+      unmountedRef.current = true;
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -110,7 +138,7 @@ export function useNotifications() {
         retryTimeout.current = null;
       }
     };
-  }, [fetchNotifications]);
+  }, [fetchNotifications, connectSSE]);
 
   // ── Load more ─────────────────────────────────────────────────────────────
   const loadMore = useCallback(async () => {
@@ -123,7 +151,7 @@ export function useNotifications() {
       const data = await res.json();
       if (data.success) {
         setNotifications(prev => [...prev, ...data.data]);
-        setHasMore(data.pagination.hasMore);
+        setHasMore(data.pagination?.hasMore ?? false);
         setPage(nextPage);
       }
     } catch {

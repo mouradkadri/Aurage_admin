@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/context/AuthContext'
+import { SessionProvider } from '@/context/SessionProvider'
+import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -32,9 +34,12 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="theme-preference">
           <AuthProvider>
-            {children}
+            <SessionProvider>
+              {children}
+            </SessionProvider>
           </AuthProvider>
         </ThemeProvider>
+        <Toaster richColors closeButton />
         <Analytics />
       </body>
     </html>

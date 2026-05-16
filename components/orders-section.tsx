@@ -19,34 +19,70 @@ import {
   ChevronLeft, ChevronRight, Printer, MapPin, CheckCircle2, Search,
   Truck, CheckCircle, RotateCcw, AlertCircle, FileDown, Loader2, Filter,
   Package, FileSpreadsheet, ExternalLink, Calendar, Hash,
+  Copy, Check, Phone,
 } from 'lucide-react';
 import { useOrders, Order, OrderHistoryLog, DeliveryFilter, OrderStats } from '@/hooks/useOrders';
 
-// ─── i18n ─────────────────────────────────────────────────────────────────────
-// Single source of truth for the UI language.
-// Switch this to 'en' to flip every bilingual field at once.
-// Bilingual fields: Product.name/description/scent_description/features,
-//                   Pack.name/description, Collection.name/description,
-//                   Announcement.text
-// Non-bilingual:    BottleVariant.name (plain string — never index with lang)
 const LANG: 'fr' | 'en' = 'fr';
 
-/** Safely read a bilingual { en, fr } field, falling back to the other locale. */
 function t(field: { en?: string; fr?: string } | string | null | undefined): string {
   if (!field) return '';
-  if (typeof field === 'string') return field;           // plain string (e.g. bottle.name)
+  if (typeof field === 'string') return field;
   return field[LANG] || field.en || field.fr || '';
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const statusFr = (s: string) =>
   ({ pending: 'En attente', printed: 'Imprimé', shipped: 'Expédié', delivered: 'Livré', cancelled: 'Annulé' } as Record<string, string>)[s] ?? s;
 
-/** Two-letter initials avatar for a customer */
+// ─── CopyChip ─────────────────────────────────────────────────────────────────
+// Inline copy button — shows a checkmark for 2s after copying.
+// Stops click propagation so it doesn't select/open the row.
+
+const CopyChip: React.FC<{ text: string; label?: string }> = ({ text, label }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback for older browsers
+      const el = document.createElement('textarea');
+      el.value = text;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      title={`Copy ${label ?? text}`}
+      className={`
+        inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium
+        transition-all duration-150 select-none flex-shrink-0
+        ${copied
+          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+          : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 dark:bg-zinc-800 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-300'
+        }
+      `}
+    >
+      {copied
+        ? <><Check className="w-2.5 h-2.5" /> Copied</>
+        : <Copy className="w-2.5 h-2.5" />
+      }
+    </button>
+  );
+};
+
 const CustomerAvatar = ({ firstName, lastName }: { firstName?: string; lastName?: string }) => {
   const initials = `${(firstName?.[0] ?? '').toUpperCase()}${(lastName?.[0] ?? '').toUpperCase()}` || '?';
-  // Deterministic pastel from name
   const hue = ((firstName ?? '').charCodeAt(0) * 37 + (lastName ?? '').charCodeAt(0) * 17) % 360;
   return (
     <span
@@ -78,8 +114,6 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
-// ─── Shared Excel-dispatch helper ─────────────────────────────────────────────
-
 function isIntigoExcelOrder(order: Pick<Order, 'delivery_method' | 'intigo'>): boolean {
   return (
     order.delivery_method === 'intigo' &&
@@ -88,16 +122,15 @@ function isIntigoExcelOrder(order: Pick<Order, 'delivery_method' | 'intigo'>): b
   );
 }
 
-// ─── IntigoStatusChip ─────────────────────────────────────────────────────────
-
 const IntigoStatusChip = ({
-  isApi, nid, label, eventType, isExcel,
+  isApi, isPending, nid, label, eventType, isExcel,
 }: {
-  isApi?: boolean;
-  nid?: string | null;
-  label?: string | null;
+  isApi?:     boolean;
+  isPending?: boolean;
+  nid?:       string | null;
+  label?:     string | null;
   eventType?: string | null;
-  isExcel?: boolean;
+  isExcel?:   boolean;
 }) => {
   if (isApi) {
     const subLabelColor: Record<string, string> = {
@@ -134,6 +167,14 @@ const IntigoStatusChip = ({
       </span>
     );
   }
+  if (isPending) {
+    return (
+      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800/50">
+        <Truck className="w-2.5 h-2.5 flex-shrink-0" />
+        Intigo · À expédier
+      </span>
+    );
+  }
   return null;
 };
 
@@ -150,10 +191,10 @@ const DeliveryStatsCard = ({
     key: DeliveryFilter; label: string; sublabel: string; count: number;
     icon: React.ElementType; color: string; activeBg: string; dot: string;
   }[] = [
-    { key: 'self',         label: 'Auto-livraison', sublabel: 'Sans Intigo',   count: stats.delivery.self,          icon: CheckCircle,  color: 'text-gray-600 dark:text-zinc-400',      activeBg: 'bg-gray-100 dark:bg-zinc-800 ring-1 ring-gray-300 dark:ring-zinc-600',          dot: 'bg-gray-400'   },
-    { key: 'intigo',       label: 'Intigo (total)', sublabel: 'API + Excel',   count: stats.delivery.intigo,        icon: Truck,        color: 'text-violet-600 dark:text-violet-400',  activeBg: 'bg-violet-50 dark:bg-violet-950/30 ring-1 ring-violet-300 dark:ring-violet-700', dot: 'bg-violet-500' },
-    { key: 'intigo_api',   label: 'Intigo API',     sublabel: 'Avec NID',      count: stats.delivery.intigo_api,   icon: Truck,        color: 'text-indigo-600 dark:text-indigo-400',  activeBg: 'bg-indigo-50 dark:bg-indigo-950/30 ring-1 ring-indigo-300 dark:ring-indigo-700', dot: 'bg-indigo-500' },
-    { key: 'intigo_excel', label: 'Intigo Excel',   sublabel: 'Sans suivi API',count: stats.delivery.intigo_excel, icon: Package,      color: 'text-emerald-600 dark:text-emerald-400',activeBg: 'bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300 dark:ring-emerald-700', dot: 'bg-emerald-500' },
+    { key: 'self',         label: 'Auto-livraison', sublabel: 'Sans Intigo',    count: stats.delivery.self,         icon: CheckCircle, color: 'text-gray-600 dark:text-zinc-400',       activeBg: 'bg-gray-100 dark:bg-zinc-800 ring-1 ring-gray-300 dark:ring-zinc-600',            dot: 'bg-gray-400'    },
+    { key: 'intigo',       label: 'Intigo (total)', sublabel: 'API + Excel',    count: stats.delivery.intigo,       icon: Truck,       color: 'text-violet-600 dark:text-violet-400',   activeBg: 'bg-violet-50 dark:bg-violet-950/30 ring-1 ring-violet-300 dark:ring-violet-700',  dot: 'bg-violet-500'  },
+    { key: 'intigo_api',   label: 'Intigo API',     sublabel: 'Avec NID',       count: stats.delivery.intigo_api,   icon: Truck,       color: 'text-indigo-600 dark:text-indigo-400',   activeBg: 'bg-indigo-50 dark:bg-indigo-950/30 ring-1 ring-indigo-300 dark:ring-indigo-700',  dot: 'bg-indigo-500'  },
+    { key: 'intigo_excel', label: 'Intigo Excel',   sublabel: 'Sans suivi API', count: stats.delivery.intigo_excel, icon: Package,     color: 'text-emerald-600 dark:text-emerald-400', activeBg: 'bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-300 dark:ring-emerald-700', dot: 'bg-emerald-500' },
   ];
 
   return (
@@ -164,16 +205,13 @@ const DeliveryStatsCard = ({
             Mode de livraison
           </p>
           {deliveryFilter !== 'all' && (
-            <button
-              onClick={() => onFilterChange('all')}
-              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 underline underline-offset-2"
-            >
+            <button onClick={() => onFilterChange('all')} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 underline underline-offset-2">
               Tout afficher
             </button>
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {items.map(({ key, label, sublabel, count, icon: Icon, color, activeBg, dot }) => {
+          {items.map(({ key, label, sublabel, count, icon: Icon, color, activeBg }) => {
             const isActive = deliveryFilter === key;
             return (
               <button
@@ -198,9 +236,6 @@ const DeliveryStatsCard = ({
   );
 };
 
-// ─── Invoice PDF ──────────────────────────────────────────────────────────────
-
-
 // ─── Bulk Action Bar ──────────────────────────────────────────────────────────
 
 const BulkActionBar: React.FC<{
@@ -215,16 +250,13 @@ const BulkActionBar: React.FC<{
   if (selectedCount === 0) return null;
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-2xl shadow-2xl px-4 py-3 animate-in slide-in-from-bottom-10 duration-200">
-      {/* Count badge */}
       <span className="flex items-center justify-center min-w-[2rem] h-7 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold px-2 mr-2">
         {selectedCount}
       </span>
       <span className="text-xs font-medium text-gray-500 dark:text-zinc-400 mr-3 whitespace-nowrap hidden sm:block">
         sélectionné{selectedCount > 1 ? 's' : ''}
       </span>
-
       <Separator orientation="vertical" className="bg-gray-200 dark:bg-zinc-700 h-5 mr-2 hidden sm:block" />
-
       <div className="flex items-center gap-1">
         <BulkBtn disabled={isUpdating || isPrinting} onClick={onPrintInvoices} icon={isPrinting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} label="Factures" color="amber" />
         <BulkBtn disabled={isUpdating} onClick={onExportIntigo}              icon={<FileDown className="w-3.5 h-3.5" />}            label="Intigo"   color="emerald" />
@@ -233,39 +265,28 @@ const BulkActionBar: React.FC<{
         <BulkBtn disabled={isUpdating} onClick={() => onAction('delivered')} icon={<CheckCircle className="w-3.5 h-3.5" />}          label="Livré"    color="green" />
         <BulkBtn disabled={isUpdating} onClick={() => onAction('cancelled')} icon={<RotateCcw className="w-3.5 h-3.5" />}            label="Annuler"  color="red" />
       </div>
-
       <Separator orientation="vertical" className="bg-gray-200 dark:bg-zinc-700 h-5 mx-2" />
-      <button
-        disabled={isUpdating}
-        onClick={onClose}
-        className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 hover:text-gray-600 transition-colors text-sm font-medium"
-      >
+      <button disabled={isUpdating} onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 hover:text-gray-600 transition-colors text-sm font-medium">
         ✕
       </button>
     </div>
   );
 };
 
-const BulkBtn = ({
-  disabled, onClick, icon, label, color,
-}: {
+const BulkBtn = ({ disabled, onClick, icon, label, color }: {
   disabled: boolean; onClick: () => void; icon: React.ReactNode; label: string;
   color: 'amber' | 'emerald' | 'blue' | 'violet' | 'green' | 'red';
 }) => {
   const colors = {
-    amber:  'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20',
-    emerald:'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20',
-    blue:   'text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20',
-    violet: 'text-violet-600 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20',
-    green:  'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20',
-    red:    'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20',
+    amber:   'text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20',
+    emerald: 'text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20',
+    blue:    'text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20',
+    violet:  'text-violet-600 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20',
+    green:   'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20',
+    red:     'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20',
   };
   return (
-    <button
-      disabled={disabled}
-      onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${colors[color]}`}
-    >
+    <button disabled={disabled} onClick={onClick} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${colors[color]}`}>
       {icon}
       <span className="hidden sm:block">{label}</span>
     </button>
@@ -275,24 +296,56 @@ const BulkBtn = ({
 // ─── Order Details Sheet ──────────────────────────────────────────────────────
 
 const OrderDetailsSheet: React.FC<{
-  selectedData: { order: Order; history: OrderHistoryLog[] } | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  selectedData:     { order: Order; history: OrderHistoryLog[] } | null;
+  open:             boolean;
+  onOpenChange:     (open: boolean) => void;
   isLoadingDetails: boolean;
-  onUpdateStatus: (id: string, status: string, note?: string) => Promise<boolean>;
-  onAddNote: (id: string, note: string) => Promise<boolean>;
-  onRefresh: () => void;
-  onShipRefresh: () => void;
+  onUpdateStatus:   (id: string, status: string, note?: string) => Promise<boolean>;
+  onAddNote:        (id: string, note: string) => Promise<boolean>;
+  onRefresh:        () => void;
+  onShipRefresh:    () => void;
+  // ── Navigation ──────────────────────────────────────────────────────────────
+  orders:           Order[];
+  currentOrderId:   string | null;
+  onNavigate:       (orderId: string) => void;
 }> = ({
   selectedData, open, onOpenChange, isLoadingDetails,
   onUpdateStatus, onAddNote, onRefresh, onShipRefresh,
+  orders, currentOrderId, onNavigate,
 }) => {
-  const [notes, setNotes]           = useState('');
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [notes, setNotes]                 = useState('');
+  const [isPrinting, setIsPrinting]       = useState(false);
+  const [showPrintConfirm, setShowPrintConfirm] = useState(false);
+
   const order   = selectedData?.order;
   const history = selectedData?.history ?? [];
 
-  useEffect(() => { setNotes(''); }, [order]);
+  // ── Navigation helpers ─────────────────────────────────────────────────────
+  const currentIndex = orders.findIndex(o => o._id === currentOrderId);
+  const hasPrev      = currentIndex > 0;
+  const hasNext      = currentIndex < orders.length - 1;
+
+  const goTo = (delta: -1 | 1) => {
+    const next = orders[currentIndex + delta];
+    if (next) {
+      setNotes('');
+      setShowPrintConfirm(false);
+      onNavigate(next._id);
+    }
+  };
+
+  // Keyboard arrow navigation
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft'  && hasPrev) goTo(-1);
+      if (e.key === 'ArrowRight' && hasNext) goTo(1);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, hasPrev, hasNext, currentIndex]); // eslint-disable-line
+
+  useEffect(() => { setNotes(''); setShowPrintConfirm(false); }, [order?._id]);
 
   const handleStatusUpdate = async (status: string, defaultNote?: string) => {
     if (!order) return;
@@ -302,20 +355,31 @@ const OrderDetailsSheet: React.FC<{
 
   const handleSheetClose = (isOpen: boolean) => {
     if (!isOpen && order && notes.trim()) onAddNote(order._id, notes);
+    setShowPrintConfirm(false);
     onOpenChange(isOpen);
   };
 
-  const handlePrintInvoice = async () => {
+  // ── Print with confirmation ────────────────────────────────────────────────
+  // First click → shows confirmation banner.
+  // Second click (Confirm) → generates PDF then marks as printed.
+  // Cancel → dismisses the banner without any side effects.
+  const handlePrintConfirm = async () => {
     if (!order) return;
+    setShowPrintConfirm(false);
     setIsPrinting(true);
     try {
       await generateInvoicePDF([order]);
-      if (order.status === 'pending') await handleStatusUpdate('printed', 'Facture PDF générée');
-    } finally { setIsPrinting(false); }
+      if (order.status === 'pending') {
+        await handleStatusUpdate('printed', 'Facture PDF générée');
+      }
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
-  const isIntigoApi   = order?.delivery_method === 'intigo' && !!order.intigo?.nid;
-  const isIntigoExcel = order ? isIntigoExcelOrder(order) : false;
+  const isIntigoApi     = order?.delivery_method === 'intigo' && !!order.intigo?.nid;
+  const isIntigoExcel   = order ? isIntigoExcelOrder(order) : false;
+  const isIntigoPending = order?.delivery_method === 'intigo' && !isIntigoApi && !isIntigoExcel;
 
   return (
     <Sheet open={open} onOpenChange={handleSheetClose}>
@@ -333,7 +397,9 @@ const OrderDetailsSheet: React.FC<{
           <>
             {/* ── Sheet header ── */}
             <div className="sticky top-0 z-10 bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-6 py-4">
-              <div className="flex items-start justify-between gap-4">
+
+              {/* Top row: avatar + name + PDF button + nav */}
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <CustomerAvatar firstName={order.customer?.first_name} lastName={order.customer?.last_name} />
                   <div className="min-w-0">
@@ -353,29 +419,72 @@ const OrderDetailsSheet: React.FC<{
                     </div>
                   </div>
                 </div>
-                <Button
-  variant="outline" size="sm"
-  onClick={handlePrintInvoice} disabled={isPrinting}
-  className="flex-shrink-0 flex items-center gap-2 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700/50 dark:text-amber-400 dark:hover:bg-amber-900/20"
->
-  {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-  <span className="hidden sm:block">
-    {isPrinting ? 'Génération...' : 'Facture PDF'}
-  </span>
-</Button>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* ── Print button — shows confirmation on first click ── */}
+                  {!showPrintConfirm ? (
+                    <Button
+                      variant="outline" size="sm"
+                      onClick={() => setShowPrintConfirm(true)}
+                      disabled={isPrinting}
+                      className="flex items-center gap-2 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700/50 dark:text-amber-400 dark:hover:bg-amber-900/20"
+                    >
+                      {isPrinting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                      <span className="hidden sm:block">{isPrinting ? 'Génération...' : 'Facture PDF'}</span>
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-lg px-2.5 py-1.5">
+                      <span className="text-xs text-amber-700 dark:text-amber-400 font-medium whitespace-nowrap">
+                        {order.status === 'pending' ? 'Imprimer et marquer comme imprimé ?' : 'Imprimer ?'}
+                      </span>
+                      <button
+                        onClick={handlePrintConfirm}
+                        className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-colors"
+                      >
+                        Confirmer
+                      </button>
+                      <button
+                        onClick={() => setShowPrintConfirm(false)}
+                        className="px-2 py-0.5 rounded text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  )}
+
+                  {/* ── Prev / Next navigation ── */}
+                  <div className="flex items-center gap-0.5 border border-gray-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => goTo(-1)}
+                      disabled={!hasPrev}
+                      title="Commande précédente (←)"
+                      className="w-8 h-8 flex items-center justify-center text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="px-1.5 text-[11px] tabular-nums text-gray-400 dark:text-zinc-500 select-none border-x border-gray-200 dark:border-zinc-700 h-8 flex items-center">
+                      {currentIndex + 1}/{orders.length}
+                    </span>
+                    <button
+                      onClick={() => goTo(1)}
+                      disabled={!hasNext}
+                      title="Commande suivante (→)"
+                      className="w-8 h-8 flex items-center justify-center text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              {/* Status pills row */}
+              {/* Status pills */}
               <div className="flex items-center gap-2 mt-3 flex-wrap">
                 <StatusBadge status={order.status} />
                 {isIntigoApi && (
-                  <IntigoStatusChip
-                    isApi nid={order.intigo?.nid}
-                    label={order.intigo?.status_label}
-                    eventType={order.intigo?.event_type}
-                  />
+                  <IntigoStatusChip isApi nid={order.intigo?.nid} label={order.intigo?.status_label} eventType={order.intigo?.event_type} />
                 )}
-                {isIntigoExcel && <IntigoStatusChip isExcel />}
+                {isIntigoExcel   && <IntigoStatusChip isExcel />}
+                {isIntigoPending && <IntigoStatusChip isPending />}
                 {order.delivery_method === 'self' && (
                   <span className="flex items-center gap-1 text-[10px] text-gray-400 dark:text-zinc-500">
                     <CheckCircle className="w-3 h-3" /> Auto-livraison
@@ -386,16 +495,22 @@ const OrderDetailsSheet: React.FC<{
 
             <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
 
-              {/* Customer + Address side by side */}
+              {/* Customer + Address */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Contact</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">
                     {order.customer?.first_name ?? 'Client'} {order.customer?.last_name ?? ''}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-zinc-400">{order.customer?.phone ?? '—'}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs text-gray-500 dark:text-zinc-400">{order.customer?.phone ?? '—'}</p>
+                    {order.customer?.phone && <CopyChip text={order.customer.phone} label="phone" />}
+                  </div>
                   {order.customer?.email && (
-                    <p className="text-xs text-gray-400 dark:text-zinc-500 truncate">{order.customer.email}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-gray-400 dark:text-zinc-500 truncate">{order.customer.email}</p>
+                      <CopyChip text={order.customer.email} label="email" />
+                    </div>
                   )}
                 </div>
                 <div className="space-y-1.5 border-l border-gray-100 dark:border-zinc-800 pl-4">
@@ -412,6 +527,16 @@ const OrderDetailsSheet: React.FC<{
                       )}
                     </div>
                   </div>
+                  {(order.shipping_address?.street || order.shipping_address?.governorate) && (
+                    <CopyChip
+                      text={[
+                        order.shipping_address?.street,
+                        order.shipping_address?.district,
+                        order.shipping_address?.governorate ?? (order.shipping_address as any)?.state,
+                      ].filter(Boolean).join(', ')}
+                      label="address"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -433,35 +558,23 @@ const OrderDetailsSheet: React.FC<{
                       {(!order.items || order.items.length === 0) ? (
                         <TableRow>
                           <TableCell colSpan={3} className="text-center py-8 text-sm text-gray-400">Aucun article.</TableCell>
-                          <TableCell colSpan={3} className="text-center py-8 text-sm text-gray-400">Aucun article.</TableCell>
                         </TableRow>
                       ) : order.items.map((item, idx) => (
                         <TableRow key={item._id ?? idx} className="border-b border-gray-100 dark:border-zinc-800/60 last:border-0">
                           <TableCell className="px-3 py-3">
                             {item.pack ? (
                               <div>
-                                {/* Pack.name is bilingual — use t() */}
-                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                  📦 {t(item.pack.name)}
-                                </p>
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">📦 {t(item.pack.name)}</p>
                                 <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-0.5">Pack groupé</p>
                               </div>
                             ) : (
                               <div>
-                                {/* Product.name is bilingual — use t() */}
-                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                  {t(item.product?.name) || 'Produit'}
-                                </p>
-                                {/* BottleVariant.name is a plain string — never use [lang] on it */}
-                                <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-0.5">
-                                  Flacon : {item.bottle?.name ?? 'N/A'}
-                                </p>
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">{t(item.product?.name) || 'Produit'}</p>
+                                <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-0.5">Flacon : {item.bottle?.name ?? 'N/A'}</p>
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className="text-center text-sm font-medium text-gray-700 dark:text-zinc-300">
-                            {item.quantity}
-                          </TableCell>
+                          <TableCell className="text-center text-sm font-medium text-gray-700 dark:text-zinc-300">{item.quantity}</TableCell>
                           <TableCell className="text-right text-sm font-semibold text-gray-900 dark:text-white pr-3">
                             DT{(item.price_at_purchase ?? 0).toFixed(2)}
                           </TableCell>
@@ -470,13 +583,9 @@ const OrderDetailsSheet: React.FC<{
                     </TableBody>
                   </Table>
                 </div>
-
-                {/* Total */}
                 <div className="mt-3 flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-zinc-900/60 rounded-xl border border-gray-100 dark:border-zinc-800">
                   <span className="text-sm font-semibold text-gray-500 dark:text-zinc-400">Total commande</span>
-                  <span className="text-lg font-bold text-gray-900 dark:text-white">
-                    DT{(order.total_amount ?? 0).toFixed(2)}
-                  </span>
+                  <span className="text-lg font-bold text-gray-900 dark:text-white">DT{(order.total_amount ?? 0).toFixed(2)}</span>
                 </div>
               </div>
 
@@ -484,9 +593,7 @@ const OrderDetailsSheet: React.FC<{
 
               {/* Timeline */}
               <div>
-                <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest mb-4">
-                  Historique
-                </p>
+                <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest mb-4">Historique</p>
                 <div className="space-y-3">
                   {history.length === 0 ? (
                     <p className="text-sm text-gray-400 dark:text-zinc-500 italic">Aucun historique.</p>
@@ -496,32 +603,15 @@ const OrderDetailsSheet: React.FC<{
                       <div key={log._id} className="flex gap-3">
                         <div className="flex flex-col items-center">
                           <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isCancelled ? 'bg-red-50 border-red-400 text-red-500 dark:bg-red-950/30 dark:border-red-600' : 'bg-blue-50 border-blue-400 text-blue-500 dark:bg-blue-950/30 dark:border-blue-600'}`}>
-                            {isCancelled
-                              ? <AlertCircle className="w-3.5 h-3.5" />
-                              : <CheckCircle2 className="w-3.5 h-3.5" />
-                            }
+                            {isCancelled ? <AlertCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                           </div>
-                          {index < history.length - 1 && (
-                            <div className="w-px flex-1 bg-gray-200 dark:bg-zinc-700 mt-1 mb-0 min-h-[1.5rem]" />
-                          )}
+                          {index < history.length - 1 && <div className="w-px flex-1 bg-gray-200 dark:bg-zinc-700 mt-1 min-h-[1.5rem]" />}
                         </div>
                         <div className="pb-3 min-w-0">
-                          <p className="text-xs font-semibold text-gray-900 dark:text-white">
-                            {statusFr(log.status)}
-                          </p>
-                          <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-0.5">
-                            {new Date(log.created_at).toLocaleString('fr-FR')}
-                          </p>
-                          {log.note && (
-                            <p className="text-[11px] text-gray-500 dark:text-zinc-400 italic mt-1 bg-gray-50 dark:bg-zinc-900 rounded px-2 py-1">
-                              {log.note}
-                            </p>
-                          )}
-                          {log.admin_id && (
-                            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-                              Par : {log.admin_id.name}
-                            </p>
-                          )}
+                          <p className="text-xs font-semibold text-gray-900 dark:text-white">{statusFr(log.status)}</p>
+                          <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-0.5">{new Date(log.created_at).toLocaleString('fr-FR')}</p>
+                          {log.note && <p className="text-[11px] text-gray-500 dark:text-zinc-400 italic mt-1 bg-gray-50 dark:bg-zinc-900 rounded px-2 py-1">{log.note}</p>}
+                          {log.admin_id && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">Par : {log.admin_id.name}</p>}
                         </div>
                       </div>
                     );
@@ -533,37 +623,33 @@ const OrderDetailsSheet: React.FC<{
 
               {/* Intigo shipping panel */}
               <IntigoShippingPanel
-  orderId={order._id}
-  orderStatus={order.status}
-  deliveryMethod={order.delivery_method}
-  items={order.items}
-  totalAmount={order.total_amount}
-  shippingAddress={order.shipping_address}
-  intigo={order.intigo}
-  onShipped={onShipRefresh}
-/>
+                orderId={order._id}
+                orderStatus={order.status}
+                deliveryMethod={order.delivery_method}
+                items={order.items}
+                totalAmount={order.total_amount}
+                shippingAddress={order.shipping_address}
+                intigo={order.intigo}
+                onShipped={onShipRefresh}
+              />
 
               <Separator className="bg-gray-100 dark:bg-zinc-800" />
 
               {/* Status update */}
               <div>
-                <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest mb-2">
-                  Mettre à jour
-                </p>
+                <p className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest mb-2">Mettre à jour</p>
                 <textarea
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={e => setNotes(e.target.value)}
                   placeholder="Ajouter une note interne (optionnel)…"
                   rows={2}
                   className="w-full px-3 py-2 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm mb-3 bg-transparent text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 dark:focus:border-amber-600 resize-none transition"
                 />
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => handleStatusUpdate('shipped')}
-                    className="bg-violet-600 hover:bg-violet-700 text-white">
+                  <Button size="sm" onClick={() => handleStatusUpdate('shipped')} className="bg-violet-600 hover:bg-violet-700 text-white">
                     <Truck className="w-3.5 h-3.5 mr-1.5" /> Marquer expédié
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleStatusUpdate('delivered')}
-                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/20">
+                  <Button size="sm" variant="outline" onClick={() => handleStatusUpdate('delivered')} className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/20">
                     <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Marquer livré
                   </Button>
                   {(order.delivery_method !== 'intigo' || !order.intigo?.nid) && (
@@ -572,12 +658,7 @@ const OrderDetailsSheet: React.FC<{
                     </Button>
                   )}
                   {order.delivery_method === 'intigo' && order.intigo?.nid && (
-                    <a
-                      href="https://app.intigo.net"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 mt-1 self-center"
-                    >
+                    <a href="https://app.intigo.net" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 mt-1 self-center">
                       <ExternalLink className="w-3 h-3" />
                       Gérer via dashboard Intigo
                     </a>
@@ -607,6 +688,7 @@ export const OrdersSection = () => {
   const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>('all');
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [sheetOpen, setSheetOpen]           = useState(false);
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [isBulkPrinting, setIsBulkPrinting] = useState(false);
   const [exportToast, setExportToast]       = useState<string | null>(null);
@@ -622,55 +704,46 @@ export const OrdersSection = () => {
   }, [fetchOrders, page, statusFilter, deliveryFilter, searchTerm]);
 
   useEffect(() => {
-    const t = setTimeout(() => doFetch(), 400);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => doFetch(), 400);
+    return () => clearTimeout(timer);
   }, [searchTerm, statusFilter, deliveryFilter, page, doFetch]);
 
   const handleShipRefresh = useCallback(() => {
     setStatusFilter('all');
     setPage(1);
-    fetchOrders({
-      page: 1, limit: 10, status: 'all',
-      delivery_method: deliveryFilter,
-      searchTerm: searchTerm.trim() || undefined,
-    });
+    fetchOrders({ page: 1, limit: 10, status: 'all', delivery_method: deliveryFilter, searchTerm: searchTerm.trim() || undefined });
   }, [fetchOrders, deliveryFilter, searchTerm]);
 
-  const handleDeliveryFilterChange = (val: DeliveryFilter) => {
-    setDeliveryFilter(val);
-    setPage(1);
-  };
-
-  const handleSelectOrder = (id: string) => {
-    const s = new Set(selectedOrders);
-    s.has(id) ? s.delete(id) : s.add(id);
-    setSelectedOrders(s);
-  };
-
-  const handleSelectAll = () => {
-    setSelectedOrders(selectedOrders.size === orders.length
-      ? new Set()
-      : new Set(orders.map(o => o._id)));
-  };
+  const handleDeliveryFilterChange = (val: DeliveryFilter) => { setDeliveryFilter(val); setPage(1); };
+  const handleSelectOrder  = (id: string) => { const s = new Set(selectedOrders); s.has(id) ? s.delete(id) : s.add(id); setSelectedOrders(s); };
+  const handleSelectAll    = () => setSelectedOrders(selectedOrders.size === orders.length ? new Set() : new Set(orders.map(o => o._id)));
 
   const handleOpenDetails = async (id: string) => {
+    setCurrentOrderId(id);
     setSheetOpen(true);
     await fetchOrderDetails(id);
   };
 
+  // Navigate to a different order while the sheet is open
+  const handleNavigate = async (orderId: string) => {
+    setCurrentOrderId(orderId);
+    await fetchOrderDetails(orderId);
+  };
+
   const handleBulkAction = async (newStatus: string) => {
-  const count = selectedOrders.size;
-  if (!window.confirm(`Marquer ${count} commande(s) comme "${statusFr(newStatus)}" ?`)) return;
-  setIsBulkUpdating(true);
-  try {
-    await Promise.all(Array.from(selectedOrders).map(id =>
-      updateOrderStatus(id, newStatus, `Mise à jour groupée → ${statusFr(newStatus)}`)));
-    setSelectedOrders(new Set());
-    doFetch();
-    setExportToast(`✓ ${count} commande(s) marquée(s) comme "${statusFr(newStatus)}"`);
-    setTimeout(() => setExportToast(null), 5000);
-  } finally { setIsBulkUpdating(false); }
-};
+    const count = selectedOrders.size;
+    if (!window.confirm(`Marquer ${count} commande(s) comme "${statusFr(newStatus)}" ?`)) return;
+    setIsBulkUpdating(true);
+    try {
+      await Promise.all(Array.from(selectedOrders).map(id =>
+        updateOrderStatus(id, newStatus, `Mise à jour groupée → ${statusFr(newStatus)}`)));
+      setSelectedOrders(new Set());
+      doFetch();
+      setExportToast(`✓ ${count} commande(s) marquée(s) comme "${statusFr(newStatus)}"`);
+      setTimeout(() => setExportToast(null), 5000);
+    } finally { setIsBulkUpdating(false); }
+  };
+
   const handleBulkPrintInvoices = async () => {
     if (selectedOrders.size === 0) return;
     setIsBulkPrinting(true);
@@ -689,11 +762,11 @@ export const OrdersSection = () => {
   const handleExportIntigo = async () => {
     const selected = orders.filter(o => selectedOrders.has(o._id));
     if (selected.length === 0) return;
-    await exportIntigoExcel(selected, (result) => {
+    await exportIntigoExcel(selected, result => {
       const parts: string[] = [];
-      if (result.exported > 0)   parts.push(`${result.exported} colis exporté${result.exported > 1 ? 's' : ''}`);
+      if (result.exported  > 0) parts.push(`${result.exported} colis exporté${result.exported > 1 ? 's' : ''}`);
       if (result.markedInDB > 0) parts.push(`${result.markedInDB} commande${result.markedInDB > 1 ? 's' : ''} mise${result.markedInDB > 1 ? 's' : ''} à jour`);
-      if (result.skipped > 0)    parts.push(`${result.skipped} ignorée${result.skipped > 1 ? 's' : ''} (déjà expédiées)`);
+      if (result.skipped   > 0) parts.push(`${result.skipped} ignorée${result.skipped > 1 ? 's' : ''} (déjà expédiées)`);
       setExportToast(parts.join(' · '));
       setTimeout(() => setExportToast(null), 5000);
       setSelectedOrders(new Set());
@@ -701,17 +774,12 @@ export const OrdersSection = () => {
     });
   };
 
-  const resetFilters = () => {
-    setSearchTerm('');
-    setStatusFilter('all');
-    setDeliveryFilter('all');
-    setPage(1);
-  };
+  const resetFilters = () => { setSearchTerm(''); setStatusFilter('all'); setDeliveryFilter('all'); setPage(1); };
 
   const statusKpis = [
-    { label: 'En attente', key: 'pending',   color: 'text-amber-600 dark:text-amber-500',   bg: 'bg-amber-50 dark:bg-amber-950/20',   border: 'border-amber-200 dark:border-amber-800/30'   },
-    { label: 'Imprimés',   key: 'printed',   color: 'text-blue-600 dark:text-blue-500',     bg: 'bg-blue-50 dark:bg-blue-950/20',     border: 'border-blue-200 dark:border-blue-800/30'     },
-    { label: 'Expédiés',   key: 'shipped',   color: 'text-violet-600 dark:text-violet-500', bg: 'bg-violet-50 dark:bg-violet-950/20', border: 'border-violet-200 dark:border-violet-800/30' },
+    { label: 'En attente', key: 'pending',   color: 'text-amber-600 dark:text-amber-500',    bg: 'bg-amber-50 dark:bg-amber-950/20',    border: 'border-amber-200 dark:border-amber-800/30'    },
+    { label: 'Imprimés',   key: 'printed',   color: 'text-blue-600 dark:text-blue-500',      bg: 'bg-blue-50 dark:bg-blue-950/20',      border: 'border-blue-200 dark:border-blue-800/30'      },
+    { label: 'Expédiés',   key: 'shipped',   color: 'text-violet-600 dark:text-violet-500',  bg: 'bg-violet-50 dark:bg-violet-950/20',  border: 'border-violet-200 dark:border-violet-800/30'  },
     { label: 'Livrés',     key: 'delivered', color: 'text-emerald-600 dark:text-emerald-500',bg: 'bg-emerald-50 dark:bg-emerald-950/20',border: 'border-emerald-200 dark:border-emerald-800/30'},
   ] as const;
 
@@ -732,11 +800,7 @@ export const OrdersSection = () => {
         ))}
       </div>
 
-      <DeliveryStatsCard
-        stats={stats}
-        deliveryFilter={deliveryFilter}
-        onFilterChange={handleDeliveryFilterChange}
-      />
+      <DeliveryStatsCard stats={stats} deliveryFilter={deliveryFilter} onFilterChange={handleDeliveryFilterChange} />
 
       {/* Filters */}
       <Card className="bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800">
@@ -747,13 +811,12 @@ export const OrdersSection = () => {
               type="text"
               placeholder="Rechercher par nom, téléphone, ID ou NID Intigo…"
               value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+              onChange={e => { setSearchTerm(e.target.value); setPage(1); }}
               className="flex-1 bg-transparent text-sm outline-none text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-zinc-600"
             />
           </div>
-
           <div className="w-full sm:w-44">
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
               <SelectTrigger><SelectValue placeholder="Tous les statuts" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les statuts</SelectItem>
@@ -765,9 +828,8 @@ export const OrdersSection = () => {
               </SelectContent>
             </Select>
           </div>
-
           <div className="w-full sm:w-52">
-            <Select value={deliveryFilter} onValueChange={(v) => handleDeliveryFilterChange(v as DeliveryFilter)}>
+            <Select value={deliveryFilter} onValueChange={v => handleDeliveryFilterChange(v as DeliveryFilter)}>
               <SelectTrigger><SelectValue placeholder="Livraison" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toutes les livraisons</SelectItem>
@@ -778,7 +840,6 @@ export const OrdersSection = () => {
               </SelectContent>
             </Select>
           </div>
-
           <Button variant="outline" onClick={resetFilters} className="flex-shrink-0">
             <Filter className="w-4 h-4 mr-2" />Réinitialiser
           </Button>
@@ -801,10 +862,7 @@ export const OrdersSection = () => {
               <TableHeader className="bg-gray-50 dark:bg-zinc-900/80 border-b border-gray-200 dark:border-zinc-800">
                 <TableRow>
                   <TableHead className="w-10 px-4 py-3">
-                    <Checkbox
-                      checked={selectedOrders.size === orders.length && orders.length > 0}
-                      onCheckedChange={handleSelectAll}
-                    />
+                    <Checkbox checked={selectedOrders.size === orders.length && orders.length > 0} onCheckedChange={handleSelectAll} />
                   </TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider py-3">N° Cmd</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider py-3">Client</TableHead>
@@ -823,27 +881,29 @@ export const OrdersSection = () => {
                       </div>
                     </TableCell>
                   </TableRow>
-                ) : orders.map((order) => {
-                  const isIntigoApi   = order.delivery_method === 'intigo' && !!order.intigo?.nid;
-                  const isIntigoExcel = isIntigoExcelOrder(order);
-                  const isSelected    = selectedOrders.has(order._id);
+                ) : orders.map(order => {
+                  const isIntigoApi     = order.delivery_method === 'intigo' && !!order.intigo?.nid;
+                  const isIntigoExcel   = isIntigoExcelOrder(order);
+                  const isIntigoPending = order.delivery_method === 'intigo' && !isIntigoApi && !isIntigoExcel;
+                  const isSelected      = selectedOrders.has(order._id);
 
                   return (
                     <TableRow
                       key={order._id}
-                      className={`border-b border-gray-100 dark:border-zinc-800/60 cursor-pointer transition-colors duration-100 ${isSelected ? 'bg-amber-50/60 dark:bg-amber-900/10' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/40'}`}
+                      className={`group border-b border-gray-100 dark:border-zinc-800/60 cursor-pointer transition-colors duration-100 ${isSelected ? 'bg-amber-50/60 dark:bg-amber-900/10' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/40'}`}
                       onClick={() => handleSelectOrder(order._id)}
                     >
-                      <TableCell className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                      <TableCell className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
                         <Checkbox checked={isSelected} onCheckedChange={() => handleSelectOrder(order._id)} />
                       </TableCell>
 
-                      <TableCell className="py-3.5" onClick={(e) => { e.stopPropagation(); handleOpenDetails(order._id); }}>
+                      <TableCell className="py-3.5" onClick={e => { e.stopPropagation(); handleOpenDetails(order._id); }}>
                         <span className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline underline-offset-2 font-mono">
                           #{order._id?.substring(order._id.length - 6).toUpperCase()}
                         </span>
                       </TableCell>
 
+                      {/* ── Customer cell with inline copy chips ── */}
                       <TableCell className="py-3.5">
                         <div className="flex items-center gap-2.5">
                           <CustomerAvatar firstName={order.customer?.first_name} lastName={order.customer?.last_name} />
@@ -851,7 +911,17 @@ export const OrdersSection = () => {
                             <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                               {order.customer?.first_name ?? 'Client'} {order.customer?.last_name ?? ''}
                             </p>
-                            <p className="text-[11px] text-gray-400 dark:text-zinc-500 truncate">{order.customer?.phone}</p>
+                            {/* Phone with copy chip — visible on row hover */}
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[11px] text-gray-400 dark:text-zinc-500 truncate">
+                                {order.customer?.phone}
+                              </span>
+                              {order.customer?.phone && (
+                                <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <CopyChip text={order.customer.phone} label="phone" />
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </TableCell>
@@ -863,14 +933,9 @@ export const OrdersSection = () => {
                       <TableCell className="py-3.5">
                         <div className="flex flex-col gap-1">
                           <StatusBadge status={order.status} />
-                          {isIntigoApi && (
-                            <IntigoStatusChip
-                              isApi nid={order.intigo?.nid}
-                              label={order.intigo?.status_label}
-                              eventType={order.intigo?.event_type ?? undefined}
-                            />
-                          )}
-                          {isIntigoExcel && <IntigoStatusChip isExcel />}
+                          {isIntigoApi     && <IntigoStatusChip isApi nid={order.intigo?.nid} label={order.intigo?.status_label} eventType={order.intigo?.event_type ?? undefined} />}
+                          {isIntigoExcel   && <IntigoStatusChip isExcel />}
+                          {isIntigoPending && <IntigoStatusChip isPending />}
                         </div>
                       </TableCell>
 
@@ -909,12 +974,15 @@ export const OrdersSection = () => {
       <OrderDetailsSheet
         selectedData={selectedOrder}
         open={sheetOpen}
-        onOpenChange={(open) => { setSheetOpen(open); if (!open) setSelectedOrder(null); }}
+        onOpenChange={open => { setSheetOpen(open); if (!open) { setSelectedOrder(null); setCurrentOrderId(null); } }}
         isLoadingDetails={isLoading && sheetOpen}
         onUpdateStatus={updateOrderStatus}
         onAddNote={addOrderNote}
         onRefresh={doFetch}
         onShipRefresh={handleShipRefresh}
+        orders={orders}
+        currentOrderId={currentOrderId}
+        onNavigate={handleNavigate}
       />
 
       <BulkActionBar
@@ -927,7 +995,6 @@ export const OrdersSection = () => {
         onExportIntigo={handleExportIntigo}
       />
 
-      {/* Export toast */}
       {exportToast && (
         <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-xl animate-in slide-in-from-bottom-4 duration-200">
           <FileSpreadsheet className="w-4 h-4 flex-shrink-0" />

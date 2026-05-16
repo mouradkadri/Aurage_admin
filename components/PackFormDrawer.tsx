@@ -27,17 +27,70 @@ interface ImageItem {
 
 interface ContentItem {
   tempId: string;
-  product: string; // product _id
+  product: string;
 }
 
-// Bilingual field shape — mirrors the backend { en, fr } structure.
-// Pack bilingual fields: name, description (both { en, fr }).
 interface BilingualField {
   en: string;
   fr: string;
 }
 
 const DESC_MAX_LENGTH = 500;
+
+// ─── Bilingual input — defined OUTSIDE the drawer component so its identity
+//     is stable across renders. Defining it inside would cause React to treat
+//     it as a new component type on every keystroke, unmounting the input and
+//     losing focus after each character. ─────────────────────────────────────
+
+interface BilingualInputProps {
+  label: string;
+  field: BilingualField;
+  onChange: (locale: 'en' | 'fr', value: string) => void;
+  multiline?: boolean;
+  required?: boolean;
+  placeholder?: string;
+}
+
+const BilingualInput: React.FC<BilingualInputProps> = ({
+  label,
+  field,
+  onChange,
+  multiline = false,
+  required = false,
+  placeholder,
+}) => (
+  <div className="space-y-2">
+    <Label>{label}</Label>
+    <div className="grid grid-cols-2 gap-3">
+      {(['en', 'fr'] as const).map(locale => (
+        <div key={locale} className="space-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">
+            {locale === 'en' ? '🇬🇧 English' : '🇫🇷 Français'}
+          </span>
+          {multiline ? (
+            <Textarea
+              rows={3}
+              maxLength={DESC_MAX_LENGTH}
+              required={required && locale === 'en'}
+              value={field[locale]}
+              placeholder={locale === 'fr' ? 'Traduction française…' : placeholder}
+              onChange={e => onChange(locale, e.target.value)}
+            />
+          ) : (
+            <Input
+              required={required && locale === 'en'}
+              value={field[locale]}
+              placeholder={locale === 'fr' ? 'Traduction française…' : placeholder}
+              onChange={e => onChange(locale, e.target.value)}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+// ─── Main drawer ──────────────────────────────────────────────────────────────
 
 export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
   isOpen,
@@ -52,24 +105,25 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
   const [contentItems, setContentItems]   = useState<ContentItem[]>([]);
   const fileInputRef                      = useRef<HTMLInputElement>(null);
 
-  // ── Bilingual fields ────────────────────────────────────────────────────────
-  // name        → sent as name[en] / name[fr]
-  // description → sent as description[en] / description[fr]
   const [name, setName]               = useState<BilingualField>({ en: '', fr: '' });
   const [description, setDescription] = useState<BilingualField>({ en: '', fr: '' });
 
-  // ── Non-bilingual fields ────────────────────────────────────────────────────
   const [formData, setFormData] = useState({
     price:     '',
     is_active: true,
   });
 
+  // ── Stable onChange handlers — use functional setters to avoid stale closures
+  const handleNameChange = (locale: 'en' | 'fr', value: string) =>
+    setName(prev => ({ ...prev, [locale]: value }));
+
+  const handleDescriptionChange = (locale: 'en' | 'fr', value: string) =>
+    setDescription(prev => ({ ...prev, [locale]: value }));
+
   // ── Populate form on open ──────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
-        // name and description come back from the API as { en, fr } objects.
-        // Guard against legacy data that might still be a plain string.
         setName({
           en: typeof initialData.name === 'object' ? (initialData.name as BilingualField).en ?? '' : initialData.name ?? '',
           fr: typeof initialData.name === 'object' ? (initialData.name as BilingualField).fr ?? '' : '',
@@ -138,15 +192,10 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
     setIsSubmitting(true);
 
     const data = new FormData();
-
-    // Bilingual fields — sent as name[en], name[fr], description[en], description[fr]
-    // to match the multipart/form-data format the backend expects.
     data.append('name[en]', name.en);
     data.append('name[fr]', name.fr);
     data.append('description[en]', description.en);
     data.append('description[fr]', description.fr);
-
-    // Non-bilingual fields
     data.append('price',     formData.price);
     data.append('is_active', String(formData.is_active));
 
@@ -160,52 +209,6 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
     if (success) onClose();
     setIsSubmitting(false);
   };
-
-  // ── Shared bilingual input helper ──────────────────────────────────────────
-  // Renders a labelled EN + FR pair for a given bilingual field.
-  const BilingualInput = ({
-    label,
-    field,
-    setter,
-    multiline = false,
-    required  = false,
-  }: {
-    label:     string;
-    field:     BilingualField;
-    setter:    React.Dispatch<React.SetStateAction<BilingualField>>;
-    multiline?: boolean;
-    required?:  boolean;
-  }) => (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <div className="grid grid-cols-2 gap-3">
-        {(['en', 'fr'] as const).map(locale => (
-          <div key={locale} className="space-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">
-              {locale === 'en' ? '🇬🇧 English' : '🇫🇷 Français'}
-            </span>
-            {multiline ? (
-              <Textarea
-                rows={3}
-                maxLength={DESC_MAX_LENGTH}
-                required={required && locale === 'en'}
-                value={field[locale]}
-                placeholder={locale === 'fr' ? 'Traduction française…' : ''}
-                onChange={e => setter(prev => ({ ...prev, [locale]: e.target.value }))}
-              />
-            ) : (
-              <Input
-                required={required && locale === 'en'}
-                value={field[locale]}
-                placeholder={locale === 'fr' ? 'Traduction française…' : ''}
-                onChange={e => setter(prev => ({ ...prev, [locale]: e.target.value }))}
-              />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -230,15 +233,13 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
                 <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Pack Details</h3>
               </div>
 
-              {/* name — bilingual */}
               <BilingualInput
                 label="Pack Name"
                 field={name}
-                setter={setName}
+                onChange={handleNameChange}
                 required
               />
 
-              {/* price — not bilingual */}
               <div>
                 <Label>Price</Label>
                 <div className="relative">
@@ -255,11 +256,10 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
                 </div>
               </div>
 
-              {/* description — bilingual */}
               <BilingualInput
                 label="Description"
                 field={description}
-                setter={setDescription}
+                onChange={handleDescriptionChange}
                 multiline
               />
 
@@ -296,8 +296,6 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
                         <SelectTrigger><SelectValue placeholder="Select Product…" /></SelectTrigger>
                         <SelectContent>
                           {products.map(p => (
-                            // p.name is bilingual { en, fr } — display the English name in the dropdown.
-                            // Adjust locale here if you want to show French names instead.
                             <SelectItem key={p._id} value={p._id}>
                               {typeof p.name === 'object' ? (p.name as { en?: string; fr?: string }).en ?? p._id : p.name}
                             </SelectItem>

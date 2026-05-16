@@ -231,7 +231,8 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const router   = useRouter();
 
-  const { user, clear } = useAuth();
+  // ── FIX: destructure csrfFetch so logout includes the CSRF header ──────────
+  const { user, clear, csrfFetch } = useAuth();
 
   const {
     notifications,
@@ -247,7 +248,8 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      // Use csrfFetch so the x-csrf-token header is included automatically
+      await csrfFetch('/api/auth/logout', { method: 'POST' });
     } catch {
       // proceed regardless
     } finally {

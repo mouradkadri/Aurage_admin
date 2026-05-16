@@ -5,8 +5,6 @@ import React, {
   useState, useCallback, useRef,
 } from 'react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 export interface AdminUser {
   name:  string;
   email: string;
@@ -18,11 +16,9 @@ interface AuthContextValue {
   loading:   boolean;
   refresh:   () => Promise<void>;
   clear:     () => void;
-  /** Use instead of fetch() for any state-mutating request */
   csrfFetch: (input: RequestInfo, init?: RequestInit) => Promise<Response>;
+  authFetch: (input: RequestInfo, init?: RequestInit) => Promise<Response>;
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getCsrfCookie(): string {
   if (typeof document === 'undefined') return '';
@@ -30,37 +26,48 @@ function getCsrfCookie(): string {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
+export const SESSION_EXPIRED_EVENT = 'aurage:session-expired';
+
+function dispatchSessionExpired() {
+  if (typeof window === 'undefined') return;
+  // Never fire while on the login page — 401s there are expected and normal
+  if (window.location.pathname === '/login') return;
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+}
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]       = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
   const csrfReady             = useRef(false);
+  const expiryFired           = useRef(false);
 
-  // ── Bootstrap CSRF token ────────────────────────────────────────────────
-  // One GET to /api/auth/csrf sets the readable csrf_token cookie.
-  // Subsequent mutating requests read that cookie and echo it as a header.
+  // Bootstrap CSRF token
   useEffect(() => {
     if (csrfReady.current) return;
     csrfReady.current = true;
-
-    fetch('/api/auth/csrf').catch(() => {
-      // Non-fatal on first load — the token will be absent and the server
-      // will reject any mutation attempt with a 403, which is the safe default.
-    });
+    fetch('/api/auth/csrf').catch(() => {});
   }, []);
 
-  // ── Fetch current user from server ─────────────────────────────────────
+  const handle401 = useCallback(() => {
+    // Skip if on login page or already handled
+    if (typeof window !== 'undefined' && window.location.pathname === '/login') return;
+    if (expiryFired.current) return;
+    expiryFired.current = true;
+    setUser(null);
+    dispatchSessionExpired();
+  }, []);
+
   const fetchMe = useCallback(async () => {
     try {
       const res = await fetch('/api/proxy/admin/me');
 
       if (res.status === 401) {
         setUser(null);
+        setLoading(false);
+        // Don't trigger expiry here — this runs on initial load where the
+        // user may simply not be logged in yet (e.g. fresh browser visit)
         return;
       }
 
@@ -73,6 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: data.data.email ?? '',
           role:  data.data.role  ?? '',
         });
+        expiryFired.current = false;
       }
     } catch {
       setUser(null);
@@ -85,31 +93,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchMe();
   }, [fetchMe]);
 
-  // ── CSRF-aware fetch wrapper ─────────────────────────────────────────────
-  // Use this instead of fetch() for POST/PATCH/PUT/DELETE requests so the
-  // x-csrf-token header is always included automatically.
-  const csrfFetch = useCallback(
-    (input: RequestInfo, init: RequestInit = {}): Promise<Response> => {
-      const token = getCsrfCookie();
+  // Periodic session check — every 10 minutes + on tab focus
+  useEffect(() => {
+    const CHECK_INTERVAL = 10 * 60 * 1000;
 
-      const headers = new Headers(init.headers);
-      if (token) headers.set('x-csrf-token', token);
+    const check = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (expiryFired.current) return;
+      // Never check on the login page
+      if (typeof window !== 'undefined' && window.location.pathname === '/login') return;
 
-      return fetch(input, { ...init, headers });
+      try {
+        const res = await fetch('/api/proxy/admin/me');
+        if (res.status === 401) {
+          handle401();
+        } else if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.data) {
+            setUser({
+              name:  data.data.name  ?? '',
+              email: data.data.email ?? '',
+              role:  data.data.role  ?? '',
+            });
+            expiryFired.current = false;
+          }
+        }
+      } catch {
+        // Network error — don't trigger expiry, wait for next check
+      }
+    };
+
+    const interval = setInterval(check, CHECK_INTERVAL);
+
+    const onVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [handle401]);
+
+  // Authenticated fetch — intercepts 401s mid-session
+  const authFetch = useCallback(
+    async (input: RequestInfo, init: RequestInit = {}): Promise<Response> => {
+      const res = await fetch(input, init);
+      if (res.status === 401 && !expiryFired.current) handle401();
+      return res;
     },
-    []
+    [handle401]
   );
 
-  const clear = useCallback(() => setUser(null), []);
+  // CSRF-aware fetch — includes token header + intercepts 401s
+  const csrfFetch = useCallback(
+    async (input: RequestInfo, init: RequestInit = {}): Promise<Response> => {
+      const token = getCsrfCookie();
+      const headers = new Headers(init.headers);
+      if (token) headers.set('x-csrf-token', token);
+      const res = await fetch(input, { ...init, headers });
+      if (res.status === 401 && !expiryFired.current) handle401();
+      return res;
+    },
+    [handle401]
+  );
+
+  const clear = useCallback(() => {
+    setUser(null);
+    expiryFired.current = false;
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, refresh: fetchMe, clear, csrfFetch }}>
+    <AuthContext.Provider value={{ user, loading, refresh: fetchMe, clear, csrfFetch, authFetch }}>
       {children}
     </AuthContext.Provider>
   );
 }
-
-// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
