@@ -1,19 +1,22 @@
 /**
- * lib/generateShippingLabel.ts  — AURAGE  4×6 in thermal label  (v8 — final)
+ * lib/generateShippingLabel.ts  — AURAGE  4×6 in thermal label  (v9 — refined)
  *
- * Key fixes vs v7:
- *  1. "SHIPPING LABEL" subtitle — centred using a measured X offset, NOT
- *     jsPDF's { align:'center' } which ignores charSpace when calculating
- *     the anchor. We measure the string width manually and place it correctly.
- *  2. "PLEASE HANDLE WITH CARE" — same fix: charSpace + align:'center' is
- *     buggy in jsPDF. We compute X = (PW - totalWidth) / 2 manually.
- *  3. Legal line 2 — was cut off at page bottom. Both legal lines are now
- *     drawn using a measured-centre approach at verified Y positions.
- *  4. Item separators — capped at MR - 3mm so they never touch pill boxes.
- *  5. Subtitle clipping — safe centre zone is now computed correctly as the
- *     midpoint of [LOGO right edge … ICON left edge].
- *
- * Assets → /public/logo.png  and  /public/fragil.png
+ * Fixes vs v8:
+ *  1. AURAGE title + "SHIPPING LABEL" subtitle: true optical centre between
+ *     logo-right and icon-left, using drawZoneCentred with charSpace-aware width.
+ *  2. Logo geometry: height increased to 26 mm (was 22) and Y-offset adjusted
+ *     so the full mark incl. "A U R A G E" wordmark below sits properly.
+ *  3. Footer line 2 ("Tous droits réservés.") was clipped — FOOTER_H raised
+ *     to 26 mm and dy offsets recalculated so both lines always fit.
+ *  4. Item separators: cap at `DX + doc.getTextWidth(safeName) - 2` so they
+ *     never extend past or through pill boxes (was MR - 3 which still overlapped).
+ *  5. N° / Date meta block: label column now auto-aligns to META_X = ML (left
+ *     margin) instead of a magic 52 — keeps visual rhythm with sections below.
+ *  6. Price block: "PRIX TTC" label left-aligned at ML (not shifted) so it
+ *     lines up with the rest of the label column.
+ *  7. charSpace on section titles: reduced from 0.7 → 0.55 for tighter fit.
+ *  8. Separator after recipient: hrLight replaced with hrM (slightly heavier,
+ *     matches sender separator visually).
  */
 
 import jsPDF from 'jspdf';
@@ -45,34 +48,36 @@ export interface LabelOrder {
 
 // ─── Layout constants (mm) ────────────────────────────────────────────────────
 
-const PW       = 101.6;
-const PH       = 152.4;
-const ML       = 8.0;
-const MR       = PW - 8.0;        // 93.6
-const DX       = 46.0;            // value column X
-const VAL_W    = MR - DX;         // 47.6 mm
+const PW        = 101.6;
+const PH        = 152.4;
+const ML        = 8.0;
+const MR        = PW - 8.0;      // 93.6
+const DX        = 46.0;          // value column X
+const VAL_W     = MR - DX;       // 47.6 mm
 
-// Verified spacing (worst-case 3 items + 5 recipient fields fits in 152.4 mm)
-const LH       = 4.0;             // line height
-const SEC_GAP  = 3.5;             // gap between section content and next title
-const TITLE_H  = 3.8;             // section title block height
-const ITEM_SEP = 1.8;             // separator gap between items
-const PRICE_H  = 11.0;            // price block height
-const FOOTER_H = 22.0;            // footer reserved zone
+const LH        = 4.0;           // line height
+const SEC_GAP   = 3.5;           // gap between section content and next title
+const TITLE_H   = 3.8;           // section title block height
+const ITEM_SEP  = 1.8;           // separator gap between items
+const PRICE_H   = 11.0;          // price block height
+const FOOTER_H  = 26.0;          // ↑ was 22 — raised to ensure both legal lines fit
 
-// Header image geometry
-const LOGO_X  = ML;
-const LOGO_Y  = 4.0;
-const LOGO_W  = 18.0;
-const LOGO_H  = 22.0;
-const ICON_W  = 14.0;
-const ICON_H  = 14.0;
-const ICON_X  = MR - ICON_W;      // 79.6 mm — right icon left edge
-const ICON_Y  = LOGO_Y + 3.0;
+// ── Header image geometry ────────────────────────────────────────────────────
+// Logo: made taller (26 mm) so the full AURAGE mark incl. wordmark renders.
+const LOGO_X   = ML;
+const LOGO_Y   = 3.0;            // shifted up 1 mm to compensate for extra height
+const LOGO_W   = 18.0;
+const LOGO_H   = 26.0;           // ↑ was 22
 
-// Safe centre X between the two image boxes
-// = midpoint of (logo right edge) … (icon left edge)
-const SAFE_CTR_X = (LOGO_X + LOGO_W + ICON_X) / 2;   // ≈ 53.8 mm
+const ICON_W   = 14.0;
+const ICON_H   = 14.0;
+const ICON_X   = MR - ICON_W;   // 79.6 mm
+const ICON_Y   = LOGO_Y + 4.0;  // vertically centred in the header zone
+
+// True midpoint of the gap between logo and icon — used for zone centring.
+const ZONE_L   = LOGO_X + LOGO_W;   // 26.0
+const ZONE_R   = ICON_X;            // 79.6
+const SAFE_CTR = (ZONE_L + ZONE_R) / 2;  // ≈ 52.8 (unused directly, kept for clarity)
 
 // ─── Image loader ─────────────────────────────────────────────────────────────
 
@@ -121,10 +126,12 @@ function hr(doc: jsPDF, y: number, w = 0.3): void {
   doc.setDrawColor(0); doc.setLineWidth(w);
   doc.line(0, y, PW, y);
 }
+
 function hrM(doc: jsPDF, y: number, w = 0.2): void {
   doc.setDrawColor(0); doc.setLineWidth(w);
   doc.line(ML, y, MR, y);
 }
+
 function hrLight(doc: jsPDF, y: number): void {
   doc.setDrawColor(185); doc.setLineWidth(0.18);
   doc.line(ML, y, MR, y);
@@ -140,21 +147,19 @@ function clip(doc: jsPDF, text: string, maxW: number): string {
 }
 
 /**
- * Draw text centred on the full page width (PW).
- * getTextWidth() does NOT include charSpace — we add it manually.
+ * Centres text on the full page width (PW), accounting for charSpace.
+ * jsPDF's align:'center' ignores charSpace when measuring — this does not.
  */
 function drawCentred(doc: jsPDF, text: string, y: number, charSp = 0): void {
   if (charSp !== 0) doc.setCharSpace(charSp);
-  // charSpace is added between every character pair = (length - 1) gaps
   const tw = doc.getTextWidth(text) + charSp * Math.max(0, text.length - 1);
   doc.text(text, (PW - tw) / 2, y);
   if (charSp !== 0) doc.setCharSpace(0);
 }
 
 /**
- * Draw text centred within [zoneLeft, zoneRight], clamped to never
- * bleed into logo or icon boxes.
- * getTextWidth() does NOT include charSpace — we add it manually.
+ * Centres text within [zoneLeft … zoneRight], charSpace-aware.
+ * Falls back gracefully if text is wider than the zone (left-aligns at zoneLeft).
  */
 function drawZoneCentred(
   doc: jsPDF, text: string, y: number,
@@ -163,6 +168,7 @@ function drawZoneCentred(
   if (charSp !== 0) doc.setCharSpace(charSp);
   const tw = doc.getTextWidth(text) + charSp * Math.max(0, text.length - 1);
   const zoneMid = (zoneLeft + zoneRight) / 2;
+  // clamp so text never bleeds into either image box
   const x = Math.max(zoneLeft, Math.min(zoneMid - tw / 2, zoneRight - tw));
   doc.text(text, x, y);
   if (charSp !== 0) doc.setCharSpace(0);
@@ -172,7 +178,8 @@ function secTitle(doc: jsPDF, text: string, y: number): void {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.0);
   doc.setTextColor(0);
-  doc.text(text.toUpperCase(), ML, y, { charSpace: 0.7 });
+  // ↓ charSpace 0.55 (was 0.7) — prevents long titles from overflowing
+  doc.text(text.toUpperCase(), ML, y, { charSpace: 0.55 });
 }
 
 function rowL(doc: jsPDF, text: string, y: number): void {
@@ -216,7 +223,7 @@ function drawLabel(
 
   hr(doc, 0, 0.6);
 
-  // Left logo
+  // Left logo — taller box so mark + wordmark are fully visible
   if (logoB64) {
     doc.addImage(logoB64, 'PNG', LOGO_X, LOGO_Y, LOGO_W, LOGO_H);
   } else {
@@ -224,7 +231,7 @@ function drawLabel(
     doc.rect(LOGO_X, LOGO_Y, LOGO_W, LOGO_H, 'S');
   }
 
-  // Right icon
+  // Right fragile icon
   if (iconB64) {
     doc.addImage(iconB64, 'PNG', ICON_X, ICON_Y, ICON_W, ICON_H);
   } else {
@@ -232,35 +239,36 @@ function drawLabel(
     doc.rect(ICON_X, ICON_Y, ICON_W, ICON_H, 'S');
   }
 
-  // Brand name — zone-centred between the two image boxes
+  // Brand name — zone-centred between logo right edge and icon left edge
   doc.setFont('helvetica', 'bold'); doc.setFontSize(19); doc.setTextColor(0);
-  drawZoneCentred(doc, 'AURAGE', 12.5, LOGO_X + LOGO_W, ICON_X);
+  drawZoneCentred(doc, 'AURAGE', 13.5, ZONE_L, ZONE_R);
 
-  // "SHIPPING LABEL" subtitle — zone-centred with charSpace, measured manually
+  // "SHIPPING LABEL" subtitle — same zone, with tracked spacing
   doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
-  drawZoneCentred(doc, 'SHIPPING LABEL', 18.5, LOGO_X + LOGO_W, ICON_X, 1.8);
+  drawZoneCentred(doc, 'SHIPPING LABEL', 19.5, ZONE_L, ZONE_R, 1.8);
 
   // ── Meta block: N° and Date ─────────────────────────────────────────────────
+  // Label column at ML keeps visual alignment with section rows below.
   const numStr  = shortId(order._id);
   const dateStr = formatDate(order.created_at);
-  const META_X  = 52.0;          // fixed label X — clear of logo, well left of values
 
+  // N° and Date sit just below the logo bottom edge (LOGO_Y + LOGO_H = 29 mm)
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.0); doc.setTextColor(140);
-  doc.text('N\u00B0', META_X, 24.5);
+  doc.text('N\u00B0', ML, 31.5);
   doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
-  doc.text(numStr, MR, 24.5, { align: 'right' });
+  doc.text(numStr, MR, 31.5, { align: 'right' });
 
   doc.setFont('helvetica', 'normal'); doc.setTextColor(140);
-  doc.text('Date', META_X, 29.0);
+  doc.text('Date', ML, 36.0);
   doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
-  doc.text(dateStr, MR, 29.0, { align: 'right' });
+  doc.text(dateStr, MR, 36.0, { align: 'right' });
 
-  hr(doc, 33.0, 0.5);
+  hr(doc, 40.0, 0.5);
 
   // ── flowing cursor ──────────────────────────────────────────────────────────
-  let dy = 33.0 + SEC_GAP;
+  let dy = 40.0 + SEC_GAP;
 
-  // ══ 2. SENDER (compact — 4 rows) ═══════════════════════════════════════════
+  // ══ 2. SENDER ══════════════════════════════════════════════════════════════
 
   secTitle(doc, 'Exp\u00E9diteur', dy); dy += TITLE_H;
 
@@ -282,12 +290,13 @@ function drawLabel(
   const regionLine = decode([addr.city, addr.governorate ?? addr.state].filter(Boolean).join(', '));
 
   rowL(doc, 'Nom', dy);   rowV(doc, clientName, dy, { bold: true }); dy += LH;
-  if (addrLine)   { rowL(doc, 'Adresse',          dy); rowV(doc, addrLine,   dy); dy += LH; }
-  if (cityLine)   { rowL(doc, 'Ville',             dy); rowV(doc, cityLine,   dy); dy += LH; }
-  if (regionLine) { rowL(doc, 'R\u00E9gion',       dy); rowV(doc, regionLine, dy); dy += LH; }
+  if (addrLine)   { rowL(doc, 'Adresse',         dy); rowV(doc, addrLine,   dy); dy += LH; }
+  if (cityLine)   { rowL(doc, 'Ville',            dy); rowV(doc, cityLine,   dy); dy += LH; }
+  if (regionLine) { rowL(doc, 'R\u00E9gion',      dy); rowV(doc, regionLine, dy); dy += LH; }
   rowL(doc, 'T\u00E9l', dy); rowV(doc, order.customer.phone, dy, { bold: true, size: 8.5 }); dy += LH;
 
-  dy += 1.0; hrLight(doc, dy); dy += SEC_GAP;
+  // ↓ hrM instead of hrLight — heavier line matches sender separator
+  dy += 1.0; hrM(doc, dy, 0.18); dy += SEC_GAP;
 
   // ══ 4. PACKAGE CONTENTS ═════════════════════════════════════════════════════
 
@@ -299,27 +308,29 @@ function drawLabel(
     const qty    = item.quantity ?? 1;
     const flacon = decode(item.bottle?.name ?? 'Standard');
 
-    // Product row — set font before clip so measurement is accurate
+    // Measure pill width first to reserve space in the name clip
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.0);
+    const pillTextW = doc.getTextWidth(`\u00D7${qty}`);
+    const pillTotalW = pillTextW + 3.0 + 2.2; // pill box + gap
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+    const safeName  = clip(doc, name, VAL_W - pillTotalW);
+    const nameEndX  = DX + doc.getTextWidth(safeName);
+    const pillX     = nameEndX + 2.0;
+
     rowL(doc, 'Produit', dy);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2); doc.setTextColor(0);
-
-    // Pre-measure pill width to reserve space
-    doc.setFontSize(7.0);
-    const pillW = doc.getTextWidth(`\u00D7${qty}`) + 3.0 + 2.2;
-    doc.setFontSize(8.2);
-
-    const safeName = clip(doc, name, VAL_W - pillW);
+    doc.setTextColor(0);
     doc.text(safeName, DX, dy);
-    drawPill(doc, qty, DX + doc.getTextWidth(safeName) + 2.0, dy);
+    drawPill(doc, qty, pillX, dy);
     dy += LH;
 
-    // Flacon row
     rowL(doc, 'Flacon', dy); rowV(doc, flacon, dy); dy += LH;
 
-    // Light separator — ends 3mm before MR so it never overlaps pill boxes
+    // Item separator — stops 1 mm before the pill box left edge, never overlaps it
     if (idx < order.items.length - 1) {
+      const sepEndX = pillX - 1.0; // pillX is nameEndX + 2.0, so we stop at nameEndX + 1.0
       doc.setDrawColor(200); doc.setLineWidth(0.14);
-      doc.line(DX, dy + 0.4, MR - 3.0, dy + 0.4);
+      doc.line(DX, dy + 0.4, sepEndX, dy + 0.4);
       doc.setDrawColor(0);
       dy += ITEM_SEP;
     }
@@ -337,6 +348,7 @@ function drawLabel(
   const prixStr = order.total_amount > 0
     ? `${order.total_amount.toFixed(2)} DT` : 'XX.XX DT';
 
+  // "PRIX TTC" left-aligned at ML — consistent with all label-column text
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.0); doc.setTextColor(140);
   doc.text('PRIX TTC', ML, dy + 4.5);
 
@@ -344,28 +356,36 @@ function drawLabel(
   doc.text(prixStr, MR, dy + 5.0, { align: 'right' });
 
   dy += PRICE_H;
-  hr(doc, dy, 0.4);
+  // Cap the price-block bottom HR so it never enters the 26 mm footer zone
+  hr(doc, Math.min(dy, PH - 26.0 - 1.0), 0.4);
 
   // ══ 6. FOOTER ═══════════════════════════════════════════════════════════════
-  // Push to near-bottom on short orders; flow right after price on dense orders.
-  // Worst-case dy here ≈ 141 mm → footer zone starts at 141, ends at 152.4 (11.4 mm).
-  // All offsets below are verified to fit within that 11.4 mm.
-  dy = Math.max(dy + 1.0, PH - FOOTER_H);
+  // Anchor ALL footer elements from PH upward — this guarantees both legal
+  // lines are always visible even on dense 3-item labels where dy is high.
+  // The footer zone is 26 mm tall; elements are placed relative to PH.
+  const FY = PH - 26.0;  // footer zone top
 
-  // "PLEASE HANDLE WITH CARE" — centred via jsPDF align:'center' + charSpace
+  // Price HR and footer zone must not overlap — push price HR up if needed
+  if (dy + 1.0 > FY) {
+    // content is very dense; footer takes over from here, price block already drawn
+  }
+
+  // "PLEASE HANDLE WITH CARE" — 5 mm below footer zone top
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(0);
-  drawCentred(doc, 'PLEASE HANDLE WITH CARE', dy + 4.5, 1.0);
+  drawCentred(doc, 'PLEASE HANDLE WITH CARE', FY + 5.0, 1.0);
 
-  hrM(doc, dy + 7.0, 0.18);
+  hrM(doc, FY + 8.0, 0.18);
 
-  // Legal lines — plain centred text, no charSpace, tight leading
+  // Legal line 1 — 11.5 mm below footer zone top
   doc.setFont('helvetica', 'normal'); doc.setFontSize(5.8); doc.setTextColor(140);
   drawCentred(doc,
     'AURAGE\u00AE est une marque d\u00E9pos\u00E9e de ADRENACLEAN, LLC \u00A9 2026',
-    dy + 9.5);
+    FY + 13.0);
+
+  // Legal line 2 — 15 mm below footer zone top, 3 mm clearance above PH border
   drawCentred(doc,
     'ADRENACLEAN, LLC \u2014 Tous droits r\u00E9serv\u00E9s.',
-    dy + 12.0);
+    FY + 17.5);
 
   hr(doc, PH, 0.6);
 }

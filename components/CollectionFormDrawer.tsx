@@ -232,7 +232,8 @@ export const CollectionFormDrawer: React.FC<CollectionFormDrawerProps> = ({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+       <div className="sheet-scroll-body flex-1 overflow-y-auto p-8 pb-32 custom-scrollbar">
+
           <form id="collection-form" onSubmit={handleSubmit} className="space-y-8">
 
             {/* General Information */}
@@ -374,7 +375,8 @@ export const CollectionFormDrawer: React.FC<CollectionFormDrawerProps> = ({
           </form>
         </div>
 
-        <SheetFooter className="px-8 py-5 border-t bg-white dark:bg-zinc-950 sticky bottom-0 z-10">
+        <SheetFooter className="px-8 py-5 border-t bg-white dark:bg-zinc-950 lg:sticky lg:bottom-0 lg:z-10">
+
           <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>

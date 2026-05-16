@@ -53,7 +53,6 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
     is_active: true,
   });
 
-  // Populate form correctly on edit vs create
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
@@ -68,8 +67,6 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
           scentFr: initialData.scent_description?.fr || '',
           is_active: initialData.is_active ?? true,
         });
-
-        // Load existing images
         if (initialData.images && initialData.images.length > 0) {
           const existingItems = initialData.images.map(img => ({
             id: Math.random().toString(36).substring(7),
@@ -85,9 +82,8 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
       }
       setImageError(null);
     }
-  },[initialData, isOpen]);
+  }, [initialData, isOpen]);
 
-  // Cleanup object URLs to avoid memory leaks
   useEffect(() => {
     return () => {
       imageItems.forEach(item => {
@@ -135,7 +131,6 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       processFiles(Array.from(e.target.files));
-      // Reset input so the same files can be selected again if removed
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -154,21 +149,15 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
       const newItems = [...prev];
       if (direction === 'left' && index > 0) {
         [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
-      } else if (direction === 'right' && index < newItems.length - 1) {[newItems[index + 1], newItems[index]] = [newItems[index], newItems[index + 1]];
+      } else if (direction === 'right' && index < newItems.length - 1) {
+        [newItems[index + 1], newItems[index]] = [newItems[index], newItems[index + 1]];
       }
       return newItems;
     });
   };
 
-  // Drag & Drop handlers
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -192,12 +181,10 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
     data.append('scent_description[fr]', formData.scentFr);
     data.append('is_active', String(formData.is_active));
 
-    // Append new files
     imageItems.forEach((item) => {
       if (item.isNew && item.file) {
         data.append('images', item.file);
       } else if (!item.isNew) {
-        // Depending on backend, you may need to pass an array of kept image URLs
         data.append('retained_images', item.url);
       }
     });
@@ -210,17 +197,12 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
     setIsSubmitting(false);
   };
 
-  // Helper for live price formatting preview
   const formattedPrice = formData.base_price 
     ? new Intl.NumberFormat('fr-TN', { style: 'currency', currency: 'TND' }).format(Number(formData.base_price))
     : null;
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      {/* 
-        p-0 is applied to allow edge-to-edge header/footer with customized padding.
-        sm:max-w-2xl makes it comfortably wide for forms 
-      */}
       <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col bg-zinc-50 dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 shadow-2xl">
         
         {/* Sticky Header */}
@@ -235,11 +217,11 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
           </SheetDescription>
         </SheetHeader>
 
-        {/* Scrollable Form Body */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        {/* FIX 1: sheet-scroll-body class + pb-32 so content scrolls above keyboard */}
+        <div className="sheet-scroll-body flex-1 overflow-y-auto p-8 pb-32 custom-scrollbar">
           <form id="product-form" onSubmit={handleSubmit} className="space-y-8">
             
-            {/* --- General Information Card --- */}
+            {/* General Information */}
             <section className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-zinc-200/60 dark:border-zinc-800 shadow-sm space-y-6">
               <div className="flex items-center gap-2 mb-2">
                 <Info className="w-5 h-5 text-zinc-400" />
@@ -277,11 +259,13 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                   </div>
                   <div className="relative">
                     <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                    {/* FIX 2: inputMode="decimal" → decimal numeric pad on mobile */}
                     <Input 
                       required 
                       type="number" 
                       step="0.01" 
-                      min="0" 
+                      min="0"
+                      inputMode="decimal"
                       value={formData.base_price} 
                       onChange={e => setFormData({...formData, base_price: e.target.value})} 
                       placeholder="0.00" 
@@ -294,10 +278,12 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                   <Label className="text-zinc-600 dark:text-zinc-400 font-medium">Liquid Stock (ml)</Label>
                   <div className="relative">
                     <Package className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                    {/* FIX 3: inputMode="numeric" → integer numeric pad on mobile */}
                     <Input 
                       required 
                       type="number" 
-                      min="0" 
+                      min="0"
+                      inputMode="numeric"
                       value={formData.liquid_stock_quantity} 
                       onChange={e => setFormData({...formData, liquid_stock_quantity: e.target.value})} 
                       placeholder="0" 
@@ -307,7 +293,6 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                 </div>
               </div>
 
-              {/* Enhanced Switch Component */}
               <div className="flex items-center justify-between p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50">
                 <div className="space-y-0.5">
                   <Label className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 cursor-pointer">
@@ -325,9 +310,8 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
               </div>
             </section>
 
-            {/* --- Details Card --- */}
+            {/* Details Card */}
             <section className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-zinc-200/60 dark:border-zinc-800 shadow-sm space-y-6">
-              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
@@ -379,10 +363,9 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                   />
                 </div>
               </div>
-
             </section>
 
-            {/* --- Media Upload Card --- */}
+            {/* Media Upload Card */}
             <section className="bg-white dark:bg-zinc-900 rounded-3xl p-6 border border-zinc-200/60 dark:border-zinc-800 shadow-sm space-y-6">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -394,7 +377,6 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                 </span>
               </div>
 
-              {/* Advanced Drag & Drop Zone */}
               {imageItems.length < MAX_IMAGES && (
                 <div 
                   onDragOver={handleDragOver}
@@ -432,14 +414,12 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                 </div>
               )}
 
-              {/* Error State */}
               {imageError && (
                 <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm border border-red-200 dark:border-red-900/50">
                   {imageError}
                 </div>
               )}
 
-              {/* Image Previews Grid */}
               {imageItems.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-2">
                   {imageItems.map((item, idx) => (
@@ -452,11 +432,8 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                         alt={`Preview ${idx + 1}`} 
                         className="w-full h-full object-cover" 
                       />
-                      
-                      {/* Hover Overlay */}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
                         <div className="flex justify-between w-full">
-                          {/* Reordering Controls (Left/Right) */}
                           <div className="flex gap-1">
                             {idx > 0 && (
                               <button 
@@ -477,8 +454,6 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                               </button>
                             )}
                           </div>
-
-                          {/* Delete Button */}
                           <button 
                             type="button" 
                             onClick={(e) => { e.preventDefault(); removeImage(item.id); }}
@@ -487,8 +462,6 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
                             <X className="w-4 h-4" />
                           </button>
                         </div>
-
-                        {/* Tag */}
                         <div className="self-center mb-2">
                           {item.isNew && (
                             <span className="px-2 py-1 text-[10px] uppercase tracking-wider font-bold bg-amber-500 text-white rounded-md shadow-sm">
@@ -503,13 +476,13 @@ export const ProductFormDrawer: React.FC<ProductFormDrawerProps> = ({
               )}
             </section>
             
-            {/* Added spacing at bottom so it doesn't get hidden behind the sticky footer */}
             <div className="h-4" />
           </form>
         </div>
 
-        {/* Sticky Footer */}
-        <SheetFooter className="px-8 py-5 border-t border-zinc-200/60 dark:border-zinc-800 bg-white dark:bg-zinc-950 sticky bottom-0 z-10 shrink-0 flex-row justify-end gap-3 sm:space-x-0">
+        {/* FIX 4: lg:sticky so footer flows naturally on mobile (no keyboard clash)
+                  but stays pinned on desktop where there is no soft keyboard */}
+        <SheetFooter className="px-8 py-5 border-t border-zinc-200/60 dark:border-zinc-800 bg-white dark:bg-zinc-950 lg:sticky lg:bottom-0 lg:z-10 shrink-0 flex-row justify-end gap-3 sm:space-x-0">
           <Button 
             type="button" 
             variant="ghost" 

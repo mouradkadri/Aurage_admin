@@ -123,3 +123,9 @@
     @apply bg-background text-foreground;
   }
 }
+
+@supports (height: 100dvh) {
+  .sheet-scroll-body {
+    padding-bottom: env(keyboard-inset-height, 1.5rem);
+  }
+}

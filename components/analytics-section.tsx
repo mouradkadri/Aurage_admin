@@ -124,7 +124,6 @@ const ChartSkeleton: React.FC<{ height?: number }> = ({ height = 200 }) => (
 
 // ─── FilterBar ────────────────────────────────────────────────────────────────
 
-// Added "Last Quarter" (90d) and "Last Year" (365d) — Custom picker kept intact
 const PRESETS = [
   { label: '7d',  fullLabel: 'Last 7 days',  days: 7   },
   { label: '30d', fullLabel: 'Last 30 days', days: 30  },
@@ -135,10 +134,10 @@ const PRESETS = [
 const FilterBar: React.FC<{
   onDateChange: (params: DateRangeParams) => void;
 }> = ({ onDateChange }) => {
-  const [open, setOpen]             = useState(false);
-  const [dateOpen, setDateOpen]     = useState(false);
-  const [activePreset, setPreset]   = useState(30);
-  const [selectedDates, setDates]   = useState<{ from?: Date; to?: Date }>({});
+  const [open, setOpen]           = useState(false);
+  const [dateOpen, setDateOpen]   = useState(false);
+  const [activePreset, setPreset] = useState(30);
+  const [selectedDates, setDates] = useState<{ from?: Date; to?: Date }>({});
 
   const applyPreset = (days: number) => {
     setPreset(days);
@@ -185,29 +184,41 @@ const FilterBar: React.FC<{
         }
       </button>
 
-      {/* ── Filter body (always visible on ≥sm, collapsible on mobile) ── */}
+      {/* ── Filter body ── */}
       <div className={`${open ? 'block' : 'hidden'} sm:block border-t border-gray-100 dark:border-zinc-800 sm:border-none`}>
         <CardContent className="p-4 sm:p-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-            {/* ── Quick preset pills + Custom picker ── */}
+            {/* ── Date Range ── */}
             <div className="sm:col-span-2">
               <label className="text-xs font-semibold text-gray-500 dark:text-zinc-400 block mb-2">
                 Date Range
               </label>
-              <div className="flex flex-wrap items-center gap-2">
+
+              {/*
+                FIX: was `flex flex-wrap items-center gap-2` which caused pills
+                to wrap unpredictably on 375px screens.
+                Now: horizontal scroll row on mobile, normal flex-wrap on sm+.
+                -mx / px trick extends the scroll area flush to the card edge.
+                flex-shrink-0 on each pill ensures they never compress.
+              */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 sm:flex-wrap -mx-4 px-4 sm:mx-0 sm:px-0">
                 {PRESETS.map(p => (
                   <button
                     key={p.days}
                     onClick={() => applyPreset(p.days)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      activePreset === p.days
+                    className={`
+                      flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium
+                      transition-colors whitespace-nowrap
+                      ${activePreset === p.days
                         ? 'bg-amber-500 text-white shadow-sm'
                         : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                    }`}
+                      }
+                    `}
                   >
-                    {p.label}
-                    <span className="hidden sm:inline"> — {p.fullLabel}</span>
+                    {/* Mobile: short label only. sm+: short + full label */}
+                    <span className="sm:hidden">{p.label}</span>
+                    <span className="hidden sm:inline">{p.label} — {p.fullLabel}</span>
                   </button>
                 ))}
 
@@ -215,13 +226,16 @@ const FilterBar: React.FC<{
                 <Popover open={dateOpen} onOpenChange={setDateOpen}>
                   <PopoverTrigger asChild>
                     <button
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        activePreset === 0
+                      className={`
+                        flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                        text-xs font-medium transition-colors whitespace-nowrap
+                        ${activePreset === 0
                           ? 'bg-amber-500 text-white shadow-sm'
                           : 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                      }`}
+                        }
+                      `}
                     >
-                      <CalendarIcon className="w-3 h-3" />
+                      <CalendarIcon className="w-3 h-3 flex-shrink-0" />
                       Custom
                     </button>
                   </PopoverTrigger>
@@ -288,6 +302,8 @@ const useChartTheme = () => {
 };
 
 // ─── Sales Over Time ──────────────────────────────────────────────────────────
+// FIX: outer div gets minHeight so ResponsiveContainer never collapses to 0.
+// 260px on desktop, 200px on mobile (controlled via inline style + class).
 
 const SalesOverTimeChart: React.FC<{
   data: { date: string; grossSales: number; netSales: number }[];
@@ -305,7 +321,8 @@ const SalesOverTimeChart: React.FC<{
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4 sm:p-6 pt-2">
-        <div style={{ width: '100%', height: 260 }}>
+        {/* FIX: min-h-[180px] ensures chart is never invisible on mobile */}
+        <div className="w-full min-h-[180px] sm:min-h-[260px]" style={{ height: 260 }}>
           {loading ? <ChartSkeleton height={260} /> : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
@@ -376,9 +393,7 @@ const SalesOverTimeChart: React.FC<{
           )}
         </div>
       </CardContent>
-      
     </Card>
-    
   );
 };
 
@@ -400,8 +415,11 @@ const RevenueByProductChart: React.FC<{
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4 sm:p-5 pt-2">
+        {/* FIX: min-h-[180px] prevents collapse; overflow-x-auto on inner div
+                lets the bar chart scroll horizontally on very narrow screens
+                instead of squishing bars to invisible width */}
         <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
-          <div style={{ minWidth: 260, height: 220 }}>
+          <div className="min-h-[180px] sm:min-h-[220px]" style={{ minWidth: 260, height: 220 }}>
             {loading ? <ChartSkeleton height={220} /> : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
@@ -441,8 +459,9 @@ const SalesByPackTypeChart: React.FC<{
           Packs vs. Single products
         </CardDescription>
       </CardHeader>
+      {/* FIX: min-h-[180px] so pie never collapses; centering kept */}
       <CardContent className="flex items-center justify-center p-4 sm:p-5 pt-2">
-        <div style={{ width: '100%', height: 220 }}>
+        <div className="w-full min-h-[180px] sm:min-h-[220px]" style={{ height: 220 }}>
           {loading ? <ChartSkeleton height={220} /> : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -490,24 +509,25 @@ const CustomerRetentionChart: React.FC<{
           First-time vs. Returning
         </CardDescription>
       </CardHeader>
+      {/* FIX: min-h-[180px] guard */}
       <CardContent className="p-4 sm:p-5 pt-2">
-        <div style={{ width: '100%', height: 220 }}>
+        <div className="w-full min-h-[180px] sm:min-h-[220px]" style={{ height: 220 }}>
           {loading ? <ChartSkeleton height={220} /> : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={t.gridColor} vertical={false} />
                 <XAxis dataKey="period" stroke={t.axisColor} tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
                 <YAxis
-  stroke={t.axisColor}
-  tick={{ fontSize: 10 }}
-  tickLine={false}
-  axisLine={false}
-  width={48}
-  tickFormatter={(value) => {
-    if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
-    return value;
-  }}
-/>
+                  stroke={t.axisColor}
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={48}
+                  tickFormatter={(value) => {
+                    if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
+                    return value;
+                  }}
+                />
                 <Tooltip
                   contentStyle={{ backgroundColor: t.tooltipBg, border: `1px solid ${t.tooltipBorder}`, borderRadius: '8px', fontSize: '12px' }}
                   labelStyle={{ color: t.textColor, fontWeight: 600 }}
@@ -581,10 +601,10 @@ const DataTable: React.FC<{
                         {rowIndex + 1}
                       </span>
                       <span className="font-medium text-gray-900 dark:text-white truncate max-w-[100px] sm:max-w-none">
-  {typeof item.name === 'object'
-    ? (item.name as any).en || (item.name as any).fr || '—'
-    : item.name}
-</span>
+                        {typeof item.name === 'object'
+                          ? (item.name as any).en || (item.name as any).fr || '—'
+                          : item.name}
+                      </span>
                     </div>
                   </td>
 
@@ -641,10 +661,10 @@ export const AnalyticsSection: React.FC = () => {
   return (
     <div className="space-y-4 sm:space-y-6">
 
-      {/* ── Filter Bar ── */}
+      {/* Filter Bar */}
       <FilterBar onDateChange={updateDateRange} />
 
-      {/* ── KPI Cards — 2-col on mobile, 4-col on desktop ── */}
+      {/* KPI Cards — 2-col on mobile, 4-col on desktop */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard
           icon={DollarSign}
@@ -680,13 +700,13 @@ export const AnalyticsSection: React.FC = () => {
         />
       </div>
 
-      {/* ── Sales Over Time (full-width) ── */}
+      {/* Sales Over Time — full width */}
       <SalesOverTimeChart
         data={charts?.salesOverTime ?? []}
         loading={loadingCharts}
       />
 
-      {/* ── Charts Row — stack on mobile, 3-col on md+ ── */}
+      {/* Charts Row — stack on mobile, 3-col on md+ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
         <RevenueByProductChart
           data={charts?.revenueByProduct ?? []}
@@ -702,7 +722,7 @@ export const AnalyticsSection: React.FC = () => {
         />
       </div>
 
-      {/* ── Tables Row — stack on mobile, 3-col on md+ ── */}
+      {/* Tables Row — stack on mobile, 3-col on md+ */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
         <DataTable
           title="Top 5 Best Sellers"

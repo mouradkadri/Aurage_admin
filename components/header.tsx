@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Bell, User, ChevronDown, Moon, Sun, X,
-  ShoppingCart, AlertCircle, Package, CheckCheck, Loader2, Search
+  ShoppingCart, AlertCircle, Package, CheckCheck, Loader2,
+  LogOut, Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
@@ -143,7 +144,7 @@ function NotificationsPanel({
   onViewAll:     () => void;
 }) {
   return (
-    <div className="absolute right-0 mt-2 w-[22rem] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/40 z-50 overflow-hidden">
+<div className="absolute right-0 mt-2 w-[22rem] max-w-[calc(100vw-1.5rem)] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-xl shadow-black/10 dark:shadow-black/40 z-50 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-zinc-800">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -224,14 +225,17 @@ function NotificationsPanel({
   );
 }
 
-export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
+// ─── HeaderActions ────────────────────────────────────────────────────────────
+// Exported so the mobile header bar in page.tsx can render it directly.
+// isMobile=true collapses some labels and adjusts sizing.
+
+export function HeaderActions({ isMobile = false }: { isMobile?: boolean }) {
   const { theme, setTheme } = useTheme();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifToast, setNotifToast] = useState<string | null>(null);
+  const [notifToast, setNotifToast]               = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const router   = useRouter();
 
-  // ── FIX: destructure csrfFetch so logout includes the CSRF header ──────────
   const { user, clear, csrfFetch } = useAuth();
 
   const {
@@ -248,7 +252,6 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
 
   const handleLogout = async () => {
     try {
-      // Use csrfFetch so the x-csrf-token header is included automatically
       await csrfFetch('/api/auth/logout', { method: 'POST' });
     } catch {
       // proceed regardless
@@ -258,6 +261,7 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
     }
   };
 
+  // Close panel on outside click
   useEffect(() => {
     if (!showNotifications) return;
     const handler = (e: MouseEvent) => {
@@ -269,6 +273,7 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
     return () => document.removeEventListener('mousedown', handler);
   }, [showNotifications]);
 
+  // Close panel on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setShowNotifications(false);
@@ -277,6 +282,160 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  const btnCls = `
+    flex items-center justify-center rounded-xl
+    text-gray-500 dark:text-zinc-400
+    hover:text-gray-900 dark:hover:text-white
+    hover:bg-gray-100 dark:hover:bg-zinc-800
+    transition-colors
+    ${isMobile ? 'w-9 h-9' : 'w-9 h-9'}
+  `;
+
+  return (
+    <div className="flex items-center gap-1">
+      {/* Theme toggle */}
+      <button
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        className={btnCls}
+        aria-label="Toggle theme"
+      >
+        {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      </button>
+
+      {/* Notifications */}
+      <div className="relative" ref={panelRef}>
+        <button
+          onClick={() => setShowNotifications(v => !v)}
+          className={`${btnCls} relative`}
+          aria-label="Notifications"
+        >
+          <Bell className="w-4 h-4" />
+          {unreadCount > 0 && (
+            <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+            </span>
+          )}
+        </button>
+
+        {showNotifications && (
+          <NotificationsPanel
+            notifications={notifications.slice(0, 5)}
+            unreadCount={unreadCount}
+            loading={loading}
+            loadingMore={loadingMore}
+            error={error}
+            hasMore={false}
+            onMarkOne={markOneRead}
+            onMarkAll={() => {
+              markAllRead();
+              setNotifToast('✓ Toutes les notifications marquées comme lues');
+              setTimeout(() => setNotifToast(null), 3000);
+            }}
+            onLoadMore={loadMore}
+            onClose={() => setShowNotifications(false)}
+            onViewAll={() => {
+              setShowNotifications(false);
+              router.push('/notifications');
+            }}
+          />
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="w-px h-5 bg-gray-200 dark:bg-zinc-800 mx-0.5" />
+
+      {/* User menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          {isMobile ? (
+            // Mobile: just show the avatar circle, no text
+            <button
+              className="w-9 h-9 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              aria-label="User menu"
+            >
+              <User className="w-4 h-4 text-white" />
+            </button>
+          ) : (
+            // Desktop: avatar + name + chevron
+            <Button
+              variant="ghost"
+              className="flex items-center gap-2.5 text-gray-700 dark:text-zinc-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 px-2.5 py-1.5 h-auto rounded-xl"
+            >
+              <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+                <User className="w-4 h-4 text-white" />
+              </div>
+              <div className="text-left">
+                <div className="text-sm font-medium leading-tight">
+                  {user?.name || 'Admin'}
+                </div>
+                <div className="text-[11px] text-gray-500 dark:text-zinc-500 leading-tight capitalize">
+                  {user?.role || '—'}
+                </div>
+              </div>
+              <ChevronDown className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-500" />
+            </Button>
+          )}
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent
+          align="end"
+          className="w-52 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 rounded-xl shadow-lg shadow-black/10 dark:shadow-black/30"
+        >
+          {/* User info header */}
+          <div className="px-3 py-2.5 border-b border-gray-100 dark:border-zinc-800 mb-1">
+            <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">
+              {user?.name || 'Admin'}
+            </p>
+            {user?.email && (
+              <p className="text-xs text-gray-400 dark:text-zinc-500 truncate mt-0.5">
+                {user.email}
+              </p>
+            )}
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 capitalize mt-0.5 font-medium">
+              {user?.role || '—'}
+            </p>
+          </div>
+
+          <DropdownMenuItem
+            onClick={() => setShowNotifications(true)}
+            className="text-gray-700 dark:text-zinc-300 focus:bg-gray-100 dark:focus:bg-zinc-800 cursor-pointer rounded-lg mx-1 my-0.5"
+          >
+            <Bell className="w-4 h-4 mr-2" />
+            <span>Notifications</span>
+            {unreadCount > 0 && (
+              <span className="ml-auto text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                {unreadCount}
+              </span>
+            )}
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator className="bg-gray-100 dark:bg-zinc-800 mx-1" />
+
+          <DropdownMenuItem
+            onClick={handleLogout}
+            className="text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20 cursor-pointer rounded-lg mx-1 my-0.5"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Sign Out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Toast */}
+      {notifToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-xl animate-in slide-in-from-bottom-4 duration-200">
+          {notifToast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Desktop Header ───────────────────────────────────────────────────────────
+// Only shown on lg+. Mobile uses the inline bar in page.tsx.
+
+export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
   return (
     <header className="bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-40 transition-colors hidden lg:block">
       <div className="flex items-center justify-between h-16 px-6">
@@ -291,8 +450,7 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
         </div>
 
         <div className="flex items-center gap-1.5">
-
-          {/* Command palette trigger */}
+          {/* Command palette trigger — desktop only */}
           <button
             onClick={() => {
               document.dispatchEvent(
@@ -302,123 +460,18 @@ export const Header: React.FC<HeaderProps> = ({ sectionTitle }) => {
             className="hidden lg:flex items-center gap-2 px-3 h-8 text-xs text-gray-400 dark:text-zinc-500 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 border border-gray-200 dark:border-zinc-700 rounded-lg transition-colors mr-1"
             title="Recherche rapide"
           >
-            <Search className="w-3 h-3" />
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
             <span>Sections</span>
             <kbd className="text-[10px] bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 px-1 rounded font-mono">
               ⌘K
             </kbd>
           </button>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="w-9 h-9 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-xl"
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </Button>
-
-          <div className="relative" ref={panelRef}>
-            <button
-              onClick={() => setShowNotifications(v => !v)}
-              className="relative w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-              aria-label="Notifications"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                </span>
-              )}
-            </button>
-
-            {showNotifications && (
-              <NotificationsPanel
-                notifications={notifications.slice(0, 5)}
-                unreadCount={unreadCount}
-                loading={loading}
-                loadingMore={loadingMore}
-                error={error}
-                hasMore={false}
-                onMarkOne={markOneRead}
-                onMarkAll={() => {
-                  markAllRead();
-                  setNotifToast('✓ Toutes les notifications marquées comme lues');
-                  setTimeout(() => setNotifToast(null), 3000);
-                }}
-                onLoadMore={loadMore}
-                onClose={() => setShowNotifications(false)}
-                onViewAll={() => {
-                  setShowNotifications(false);
-                  router.push('/notifications');
-                }}
-              />
-            )}
-          </div>
-
-          <div className="w-px h-6 bg-gray-200 dark:bg-zinc-800 mx-1" />
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="flex items-center gap-2.5 text-gray-700 dark:text-zinc-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 px-2.5 py-1.5 h-auto rounded-xl"
-              >
-                <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <User className="w-4 h-4 text-white" />
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-medium leading-tight">
-                    {user?.name || 'Admin'}
-                  </div>
-                  <div className="text-[11px] text-gray-500 dark:text-zinc-500 leading-tight capitalize">
-                    {user?.role || '—'}
-                  </div>
-                </div>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-500" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="w-48 bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 rounded-xl shadow-lg shadow-black/10 dark:shadow-black/30"
-            >
-              {user?.email && (
-                <div className="px-3 py-2 text-xs text-gray-400 dark:text-zinc-500 truncate border-b border-gray-100 dark:border-zinc-800 mb-1">
-                  {user.email}
-                </div>
-              )}
-              <DropdownMenuItem
-                onClick={() => setShowNotifications(true)}
-                className="text-gray-700 dark:text-zinc-300 focus:bg-gray-100 dark:focus:bg-zinc-800 cursor-pointer rounded-lg mx-1 my-0.5"
-              >
-                <Bell className="w-4 h-4 mr-2" />
-                <span>Notifications</span>
-                {unreadCount > 0 && (
-                  <span className="ml-auto text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                    {unreadCount}
-                  </span>
-                )}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-100 dark:bg-zinc-800 mx-1" />
-              <DropdownMenuItem
-                onClick={handleLogout}
-                className="text-red-500 focus:bg-gray-100 dark:focus:bg-zinc-800 cursor-pointer rounded-lg mx-1 my-0.5"
-              >
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
+          <HeaderActions isMobile={false} />
         </div>
       </div>
-
-      {/* Notification toast */}
-      {notifToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-emerald-600 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-xl animate-in slide-in-from-bottom-4 duration-200">
-          {notifToast}
-        </div>
-      )}
     </header>
   );
 };

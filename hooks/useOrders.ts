@@ -1,14 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
+import { toastApiError, toastNetworkError } from '@/lib/apiError';
 
 // --- INTERFACES ---
 
 export interface OrderItem {
   _id: string;
   product?: { _id: string; name: string; images: { image_url: string }[] };
-  bottle?: { _id: string; name: string; capacity_ml: number };
-  pack?: { _id: string; name: string };
+  bottle?:  { _id: string; name: string; capacity_ml: number };
+  pack?:    { _id: string; name: string };
   quantity: number;
   price_at_purchase: number;
 }
@@ -84,9 +86,9 @@ export interface OrderStats {
   cancelled: number;
   delivery: {
     self:          number;
-    intigo:        number;  // total intigo
-    intigo_api:    number;  // subset: shipped via Intigo API (has NID)
-    intigo_excel:  number;  // subset: dispatched via Excel (no NID)
+    intigo:        number;
+    intigo_api:    number;
+    intigo_excel:  number;
   };
 }
 
@@ -98,12 +100,12 @@ const DEFAULT_STATS: OrderStats = {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export const useOrders = () => {
-  const [orders, setOrders]           = useState<Order[]>([]);
+  const [orders, setOrders]               = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<{ order: Order; history: OrderHistoryLog[] } | null>(null);
-  const [isLoading, setIsLoading]     = useState(false);
-  const [totalOrders, setTotalOrders] = useState(0);
-  const [pagination, setPagination]   = useState({ currentPage: 1, totalPages: 1 });
-  const [stats, setStats]             = useState<OrderStats>(DEFAULT_STATS);
+  const [isLoading, setIsLoading]         = useState(false);
+  const [totalOrders, setTotalOrders]     = useState(0);
+  const [pagination, setPagination]       = useState({ currentPage: 1, totalPages: 1 });
+  const [stats, setStats]                 = useState<OrderStats>(DEFAULT_STATS);
 
   // ── 1. Fetch paginated orders ───────────────────────────────────────────
   const fetchOrders = useCallback(async (params: FetchOrdersParams = {}) => {
@@ -120,8 +122,12 @@ export const useOrders = () => {
       if (params.startDate)       query.append('startDate',       params.startDate);
       if (params.endDate)         query.append('endDate',         params.endDate);
 
-      const res  = await fetch(`/api/proxy/orders?${query.toString()}`);
-      if (!res.ok) throw new Error('Fetch failed');
+      const res = await fetch(`/api/proxy/orders?${query.toString()}`);
+      if (!res.ok) {
+        await toastApiError(res, 'Impossible de charger les commandes');
+        setOrders([]);
+        return;
+      }
 
       const data = await res.json();
       if (data.success) {
@@ -133,7 +139,7 @@ export const useOrders = () => {
         });
       }
     } catch (err) {
-      console.error(err);
+      toastNetworkError(err);
       setOrders([]);
     } finally {
       setIsLoading(false);
@@ -144,11 +150,15 @@ export const useOrders = () => {
   const fetchOrderDetails = async (id: string) => {
     setIsLoading(true);
     try {
-      const res  = await fetch(`/api/proxy/orders/${id}`);
+      const res = await fetch(`/api/proxy/orders/${id}`);
+      if (!res.ok) {
+        await toastApiError(res, 'Impossible de charger les détails de la commande');
+        return;
+      }
       const data = await res.json();
       if (data.success) setSelectedOrder(data.data);
     } catch (err) {
-      console.error('Failed to fetch order details:', err);
+      toastNetworkError(err);
     } finally {
       setIsLoading(false);
     }
@@ -157,19 +167,19 @@ export const useOrders = () => {
   // ── 3. Update order status ──────────────────────────────────────────────
   const updateOrderStatus = async (id: string, status: string, note?: string): Promise<boolean> => {
     try {
-      const res  = await fetch(`/api/proxy/orders/${id}/status`, {
+      const res = await fetch(`/api/proxy/orders/${id}/status`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ status, note }),
       });
-      const data = await res.json();
-      if (data.success) {
-        if (selectedOrder?.order._id === id) await fetchOrderDetails(id);
-        return true;
+      if (!res.ok) {
+        await toastApiError(res, 'Impossible de mettre à jour le statut');
+        return false;
       }
-      return false;
+      if (selectedOrder?.order._id === id) await fetchOrderDetails(id);
+      return true;
     } catch (err) {
-      console.error('Failed to update status:', err);
+      toastNetworkError(err);
       return false;
     }
   };
@@ -178,19 +188,19 @@ export const useOrders = () => {
   const addOrderNote = async (id: string, note: string): Promise<boolean> => {
     if (!note?.trim()) return true;
     try {
-      const res  = await fetch(`/api/proxy/orders/${id}/notes`, {
+      const res = await fetch(`/api/proxy/orders/${id}/notes`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ note }),
       });
-      const data = await res.json();
-      if (data.success) {
-        if (selectedOrder?.order._id === id) await fetchOrderDetails(id);
-        return true;
+      if (!res.ok) {
+        await toastApiError(res, "Impossible d'ajouter la note");
+        return false;
       }
-      return false;
+      if (selectedOrder?.order._id === id) await fetchOrderDetails(id);
+      return true;
     } catch (err) {
-      console.error('Failed to add note:', err);
+      toastNetworkError(err);
       return false;
     }
   };
@@ -198,11 +208,15 @@ export const useOrders = () => {
   // ── 5. Fetch stats ──────────────────────────────────────────────────────
   const fetchStats = useCallback(async () => {
     try {
-      const res  = await fetch('/api/proxy/orders/stats');
+      const res = await fetch('/api/proxy/orders/stats');
+      if (!res.ok) {
+        await toastApiError(res, 'Impossible de charger les statistiques');
+        return;
+      }
       const data = await res.json();
       if (data.success) setStats(data.data);
     } catch (err) {
-      console.error('Failed to fetch stats:', err);
+      toastNetworkError(err);
     }
   }, []);
 

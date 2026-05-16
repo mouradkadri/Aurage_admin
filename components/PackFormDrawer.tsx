@@ -113,14 +113,12 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
     is_active: true,
   });
 
-  // ── Stable onChange handlers — use functional setters to avoid stale closures
   const handleNameChange = (locale: 'en' | 'fr', value: string) =>
     setName(prev => ({ ...prev, [locale]: value }));
 
   const handleDescriptionChange = (locale: 'en' | 'fr', value: string) =>
     setDescription(prev => ({ ...prev, [locale]: value }));
 
-  // ── Populate form on open ──────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
@@ -157,7 +155,6 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
     setContentItems([]);
   };
 
-  // ── Image handlers ─────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
@@ -170,7 +167,6 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
     setImageItem(null);
   };
 
-  // ── Content handlers ───────────────────────────────────────────────────────
   const addContentItem = () =>
     setContentItems(prev => [...prev, { tempId: Math.random().toString(36), product: '' }]);
 
@@ -180,7 +176,6 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
   const removeContentItem = (tempId: string) =>
     setContentItems(prev => prev.filter(item => item.tempId !== tempId));
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -223,7 +218,8 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+        {/* FIX 1: sheet-scroll-body class + pb-32 so content scrolls above keyboard */}
+        <div className="sheet-scroll-body flex-1 overflow-y-auto p-8 pb-32 custom-scrollbar">
           <form id="pack-form" onSubmit={handleSubmit} className="space-y-8">
 
             {/* General Information */}
@@ -244,11 +240,13 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
                 <Label>Price</Label>
                 <div className="relative">
                   <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                  {/* FIX 2: inputMode="decimal" → decimal numeric pad on mobile */}
                   <Input
                     required
                     type="number"
                     step="0.01"
                     min="0"
+                    inputMode="decimal"
                     value={formData.price}
                     onChange={e => setFormData({ ...formData, price: e.target.value })}
                     className="pl-9"
@@ -359,7 +357,9 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
           </form>
         </div>
 
-        <SheetFooter className="px-8 py-5 border-t bg-white dark:bg-zinc-950 sticky bottom-0 z-10">
+        {/* FIX 3: lg:sticky so footer flows naturally on mobile (no keyboard clash)
+                  but stays pinned on desktop where there is no soft keyboard */}
+        <SheetFooter className="px-8 py-5 border-t bg-white dark:bg-zinc-950 lg:sticky lg:bottom-0 lg:z-10">
           <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>

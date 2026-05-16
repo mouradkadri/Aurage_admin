@@ -1,14 +1,12 @@
-// hooks/useCollections.ts
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
+import { toastApiError, toastNetworkError } from '@/lib/apiError';
 
-// --- INTERFACES ---
-
-// This represents an item inside the collection (Product or Pack)
 export interface CollectionItem {
   _id: string;
-  item: any; // After population, this will be a Product or Pack object
+  item: any;
   onModel: 'Product' | 'Pack';
 }
 export interface BilingualField {
@@ -21,10 +19,7 @@ export interface Collection {
   slug: string;
   description: BilingualField;
   is_active: boolean;
-  image?: {
-    url: string;
-    public_id: string;
-  };
+  image?: { url: string; public_id: string };
   items: CollectionItem[];
   created_at: string;
   updated_at: string;
@@ -32,161 +27,110 @@ export interface Collection {
 
 export const useCollections = () => {
   const [collections, setCollections] = useState<Collection[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading]     = useState(true);
+  const [error, setError]             = useState<string | null>(null);
 
-  // --- 1. FETCH ALL COLLECTIONS ---
   const fetchCollections = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/proxy/collections');
-      const data = await res.json();
-      if (data.success) {
-        setCollections(data.data);
-      } else {
-        throw new Error(data.message || 'Failed to fetch collections');
+      if (!res.ok) {
+        const msg = await toastApiError(res, 'Impossible de charger les collections');
+        setError(msg);
+        return;
       }
-    } catch (err: any) {
-      console.error("Fetch Collections Error:", err);
-      setError(err.message);
+      const data = await res.json();
+      if (data.success) setCollections(data.data);
+    } catch (err) {
+      toastNetworkError(err);
+      setError('Erreur réseau');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchCollections();
-  }, [fetchCollections]);
+  useEffect(() => { fetchCollections(); }, [fetchCollections]);
 
-  // --- 2. CREATE COLLECTION ---
   const createCollection = async (formData: FormData): Promise<boolean> => {
     try {
-      const res = await fetch('/api/proxy/collections', {
-        method: 'POST',
-        body: formData, // Contains name, description, and image file
-      });
-      if (res.ok) {
-        await fetchCollections();
-        return true;
-      }
-      return false;
+      const res = await fetch('/api/proxy/collections', { method: 'POST', body: formData });
+      if (!res.ok) { await toastApiError(res, 'Impossible de créer la collection'); return false; }
+      toast.success('Collection créée avec succès');
+      await fetchCollections();
+      return true;
     } catch (err) {
-      console.error("Create Collection Error:", err);
+      toastNetworkError(err);
       return false;
     }
   };
 
-  // --- 3. UPDATE COLLECTION ---
   const updateCollection = async (id: string, formData: FormData): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/proxy/collections/${id}`, {
-        method: 'PATCH',
-        body: formData,
-      });
-      if (res.ok) {
-        await fetchCollections();
-        return true;
-      }
-      return false;
+      const res = await fetch(`/api/proxy/collections/${id}`, { method: 'PATCH', body: formData });
+      if (!res.ok) { await toastApiError(res, 'Impossible de modifier la collection'); return false; }
+      toast.success('Collection mise à jour');
+      await fetchCollections();
+      return true;
     } catch (err) {
-      console.error("Update Collection Error:", err);
+      toastNetworkError(err);
       return false;
     }
   };
 
-  // --- 4. DELETE COLLECTION ---
-   const deleteCollection = async (id: string): Promise<boolean> => {
+  const deleteCollection = async (id: string): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/proxy/collections/${id}`, {
-        method: 'DELETE',
-      });
-      
-      if (res.ok) {
-        // FIX: Force a fresh fetch from the backend. 
-        // This ensures the table re-renders instantly without needing a manual refresh.
-        await fetchCollections(); 
-        return true;
-      }
-      
-      const errorData = await res.json();
-      console.error("Delete Collection Error:", errorData);
-      return false;
+      const res = await fetch(`/api/proxy/collections/${id}`, { method: 'DELETE' });
+      if (!res.ok) { await toastApiError(res, 'Impossible de supprimer la collection'); return false; }
+      toast.success('Collection supprimée');
+      await fetchCollections();
+      return true;
     } catch (err) {
-      console.error("Delete Collection Network Error:", err);
+      toastNetworkError(err);
       return false;
     }
   };
 
-  // --- 5. ADD ITEM (PRODUCT OR PACK) TO COLLECTION ---
-  /**
-   * @param collectionId ID of the collection
-   * @param itemId ID of the Product or Pack
-   * @param type Must be 'Product' or 'Pack'
-   */
-  const addItemToCollection = async (
-    collectionId: string, 
-    itemId: string, 
-    type: 'Product' | 'Pack'
-  ): Promise<boolean> => {
+  const addItemToCollection = async (collectionId: string, itemId: string, type: 'Product' | 'Pack'): Promise<boolean> => {
     try {
       const res = await fetch(`/api/proxy/collections/${collectionId}/add-item`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId, onModel: type }),
       });
-
-      if (res.ok) {
-        await fetchCollections();
-        return true;
-      }
-      const data = await res.json();
-      console.error("Add Item Error:", data.message);
-      return false;
+      if (!res.ok) { await toastApiError(res, "Impossible d'ajouter l'élément"); return false; }
+      toast.success('Élément ajouté à la collection');
+      await fetchCollections();
+      return true;
     } catch (err) {
-      console.error("Add Item Network Error:", err);
+      toastNetworkError(err);
       return false;
     }
   };
 
-  // --- 6. REMOVE ITEM FROM COLLECTION ---
-  const removeItemFromCollection = async (
-    collectionId: string, 
-    itemId: string
-  ): Promise<boolean> => {
+  const removeItemFromCollection = async (collectionId: string, itemId: string): Promise<boolean> => {
     try {
       const res = await fetch(`/api/proxy/collections/${collectionId}/remove-item`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId }),
       });
-
-      if (res.ok) {
-        await fetchCollections();
-        return true;
-      }
-      return false;
+      if (!res.ok) { await toastApiError(res, "Impossible de retirer l'élément"); return false; }
+      toast.success('Élément retiré de la collection');
+      await fetchCollections();
+      return true;
     } catch (err) {
-      console.error("Remove Item Error:", err);
+      toastNetworkError(err);
       return false;
     }
   };
 
-  // --- 7. GET SINGLE COLLECTION BY ID (LOCAL) ---
-  const getCollectionById = (id: string) => {
-    return collections.find(c => c._id === id);
-  };
+  const getCollectionById = (id: string) => collections.find(c => c._id === id);
 
   return {
-    collections,
-    isLoading,
-    error,
-    createCollection,
-    updateCollection,
-    deleteCollection,
-    addItemToCollection,
-    removeItemFromCollection,
-    getCollectionById,
-    refetchCollections: fetchCollections
+    collections, isLoading, error,
+    createCollection, updateCollection, deleteCollection,
+    addItemToCollection, removeItemFromCollection,
+    getCollectionById, refetchCollections: fetchCollections,
   };
 };

@@ -16,47 +16,72 @@ const SECTIONS = [
 interface CommandPaletteProps {
   activeSection: string;
   onSelect: (id: string) => void;
+  /** When provided, CommandPalette is controlled externally and always renders open. */
+  onClose?: () => void;
 }
 
-export const CommandPalette: React.FC<CommandPaletteProps> = ({ activeSection, onSelect }) => {
-  const [open, setOpen]         = useState(false);
-  const [search, setSearch]     = useState('');
-  const [focused, setFocused]   = useState(0);
-  const inputRef                = useRef<HTMLInputElement>(null);
+export const CommandPalette: React.FC<CommandPaletteProps> = ({
+  activeSection,
+  onSelect,
+  onClose,
+}) => {
+  // If onClose is provided, we're controlled externally and should render open immediately.
+  // Otherwise we manage our own open state (triggered by ⌘K).
+  const isControlled = typeof onClose === 'function';
 
-  // Open/close with Cmd+K or Ctrl+K
+  const [open, setOpen]       = useState(isControlled); // start open when controlled
+  const [search, setSearch]   = useState('');
+  const [focused, setFocused] = useState(0);
+  const inputRef              = useRef<HTMLInputElement>(null);
+
+  const close = () => {
+    if (isControlled) {
+      onClose?.();
+    } else {
+      setOpen(false);
+    }
+  };
+
+  // Standalone mode: open/close with Cmd+K or Ctrl+K
   useEffect(() => {
+    if (isControlled) return;
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setOpen(prev => !prev);
       }
-      if (e.key === 'Escape') {
-        setOpen(false);
-      }
+      if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+  }, [isControlled]);
 
   // Focus input when opened
   useEffect(() => {
-    if (open) {
+    const isVisible = isControlled ? true : open;
+    if (isVisible) {
       setSearch('');
       setFocused(0);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [open]);
+  }, [open, isControlled]);
+
+  // Escape key for controlled mode
+  useEffect(() => {
+    if (!isControlled) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isControlled]);
 
   const filtered = SECTIONS.filter(s =>
     s.label.toLowerCase().includes(search.toLowerCase()) ||
     s.id.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Reset focused index when search changes
-  useEffect(() => {
-    setFocused(0);
-  }, [search]);
+  useEffect(() => { setFocused(0); }, [search]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -69,20 +94,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ activeSection, o
       e.preventDefault();
       if (filtered[focused]) {
         onSelect(filtered[focused].id);
-        setOpen(false);
+        close();
       }
     }
   };
 
-  if (!open) return null;
+  const isVisible = isControlled ? true : open;
+  if (!isVisible) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm"
-      onClick={() => setOpen(false)}
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] sm:pt-[20vh] bg-black/50 backdrop-blur-sm px-4"
+      onClick={close}
     >
       <div
-        className="w-full max-w-md mx-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-md bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onClick={e => e.stopPropagation()}
       >
         {/* Search input */}
@@ -110,8 +136,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ activeSection, o
             </li>
           ) : (
             filtered.map((section, index) => {
-              const Icon     = section.icon;
-              const isActive = activeSection === section.id;
+              const Icon      = section.icon;
+              const isActive  = activeSection === section.id;
               const isFocused = focused === index;
 
               return (
@@ -119,7 +145,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ activeSection, o
                   <button
                     onClick={() => {
                       onSelect(section.id);
-                      setOpen(false);
+                      close();
                     }}
                     onMouseEnter={() => setFocused(index)}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${

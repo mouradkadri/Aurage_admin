@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { toast } from 'sonner';
+import { toastApiError, toastNetworkError } from '@/lib/apiError';
 
 export interface BilingualField {
   en: string;
@@ -18,118 +18,101 @@ export interface Announcement {
   updated_at: string;
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
 export function useAnnouncements() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isLoading, setIsLoading]         = useState(true);
   const [error, setError]                 = useState<string | null>(null);
 
-  // ── Fetch all (admin) ─────────────────────────────────────────────────────
   const fetchAnnouncements = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      // Note: Backend docs specify Route prefix is /api/Announcements with capital A
-      const res  = await fetch('/api/proxy/Announcements');
-      const data = await res.json();
-      if (data.success) {
-        setAnnouncements(data.data);
-      } else {
-        throw new Error(data.message || 'Failed to fetch');
+      const res = await fetch('/api/proxy/Announcements');
+      if (!res.ok) {
+        const msg = await toastApiError(res, 'Impossible de charger les annonces');
+        setError(msg);
+        return;
       }
-    } catch (err: any) {
-      setError(err.message);
+      const data = await res.json();
+      if (data.success) setAnnouncements(data.data);
+    } catch (err) {
+      toastNetworkError(err);
+      setError('Erreur réseau');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchAnnouncements();
-  }, [fetchAnnouncements]);
+  useEffect(() => { fetchAnnouncements(); }, [fetchAnnouncements]);
 
-  // ── Create ────────────────────────────────────────────────────────────────
   const createAnnouncement = async (text: BilingualField): Promise<boolean> => {
     try {
       const res = await fetch('/api/proxy/Announcements', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text, is_active: true, display_order: announcements.length }),
+        body: JSON.stringify({ text, is_active: true, display_order: announcements.length }),
       });
-      const data = await res.json();
-      if (data.success) {
-        await fetchAnnouncements();
-        return true;
-      }
-      return false;
-    } catch {
+      if (!res.ok) { await toastApiError(res, "Impossible de créer l'annonce"); return false; }
+      toast.success('Annonce créée');
+      await fetchAnnouncements();
+      return true;
+    } catch (err) {
+      toastNetworkError(err);
       return false;
     }
   };
 
-  // ── Update text ───────────────────────────────────────────────────────────
   const updateAnnouncement = async (id: string, text: BilingualField): Promise<boolean> => {
     try {
       const res = await fetch(`/api/proxy/Announcements/${id}`, {
-        method:  'PATCH',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text }),
+        body: JSON.stringify({ text }),
       });
-      const data = await res.json();
-      if (data.success) {
-        await fetchAnnouncements();
-        return true;
-      }
-      return false;
-    } catch {
+      if (!res.ok) { await toastApiError(res, "Impossible de modifier l'annonce"); return false; }
+      toast.success('Annonce mise à jour');
+      await fetchAnnouncements();
+      return true;
+    } catch (err) {
+      toastNetworkError(err);
       return false;
     }
   };
 
-  // ── Toggle active ─────────────────────────────────────────────────────────
   const toggleAnnouncement = async (id: string): Promise<boolean> => {
     // Optimistic update
-    setAnnouncements(prev =>
-      prev.map(a => a._id === id ? { ...a, is_active: !a.is_active } : a)
-    );
+    setAnnouncements(prev => prev.map(a => a._id === id ? { ...a, is_active: !a.is_active } : a));
     try {
       const res = await fetch(`/api/proxy/Announcements/${id}/toggle`, { method: 'PATCH' });
-      const data = await res.json();
-      if (!data.success) {
+      if (!res.ok) {
+        await toastApiError(res, "Impossible de modifier l'annonce");
         await fetchAnnouncements(); // revert
         return false;
       }
       return true;
-    } catch {
+    } catch (err) {
+      toastNetworkError(err);
       await fetchAnnouncements(); // revert
       return false;
     }
   };
 
-  // ── Delete ────────────────────────────────────────────────────────────────
   const deleteAnnouncement = async (id: string): Promise<boolean> => {
     try {
       const res = await fetch(`/api/proxy/Announcements/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        setAnnouncements(prev => prev.filter(a => a._id !== id));
-        return true;
-      }
-      return false;
-    } catch {
+      if (!res.ok) { await toastApiError(res, "Impossible de supprimer l'annonce"); return false; }
+      toast.success('Annonce supprimée');
+      setAnnouncements(prev => prev.filter(a => a._id !== id));
+      return true;
+    } catch (err) {
+      toastNetworkError(err);
       return false;
     }
   };
 
   return {
-    announcements,
-    isLoading,
-    error,
-    createAnnouncement,
-    updateAnnouncement,
-    toggleAnnouncement,
-    deleteAnnouncement,
+    announcements, isLoading, error,
+    createAnnouncement, updateAnnouncement, toggleAnnouncement, deleteAnnouncement,
     refetch: fetchAnnouncements,
   };
 }

@@ -1,10 +1,10 @@
-// hooks/usePacks.ts
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
+import { toastApiError, toastNetworkError } from '@/lib/apiError';
 
 // Define the shape of a single item within a Pack's content array.
-// The backend will populate the 'product' and 'bottle' details.
 export interface BilingualField {
   en: string;
   fr: string;
@@ -16,7 +16,6 @@ export interface PackContentDetail {
     _id: string;
     name: BilingualField;
   };
-
   quantity: number;
 }
 
@@ -42,29 +41,37 @@ export interface Pack {
  * It handles fetching, creating, updating, and deleting packs.
  */
 export const usePacks = () => {
-  const [packs, setPacks] = useState<Pack[]>([]);
+  const [packs, setPacks]         = useState<Pack[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]         = useState<string | null>(null);
 
   /**
    * Fetches all packs from the backend and updates the state.
-   * useCallback is used to prevent this function from being recreated on every render.
    */
   const fetchPacks = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const response = await fetch('/api/proxy/packs');
-      const data = await response.json();
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to fetch packs.');
+      if (!response.ok) {
+        const msg = await toastApiError(response, 'Impossible de charger les packs');
+        setError(msg);
+        return;
       }
-      
+
+      const data = await response.json();
+      if (!data.success) {
+        const msg = data.message || 'Impossible de charger les packs';
+        toast.error(msg);
+        setError(msg);
+        return;
+      }
+
       setPacks(data.data);
-    } catch (err: any) {
-      console.error("Fetch Packs Error:", err);
-      setError(err.message);
+    } catch (err) {
+      toastNetworkError(err);
+      setError('Erreur réseau');
     } finally {
       setIsLoading(false);
     }
@@ -77,60 +84,54 @@ export const usePacks = () => {
 
   /**
    * Creates a new pack using FormData.
-   * @param {FormData} formData - The pack data, including a potential image file.
-   * @returns {Promise<boolean>} - True if creation was successful, false otherwise.
    */
   const createPack = async (formData: FormData): Promise<boolean> => {
     try {
       const response = await fetch('/api/proxy/packs', {
         method: 'POST',
-        body: formData, // The browser will set the correct Content-Type for FormData
+        body:   formData,
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Backend Error Detail:", errorData);
-        throw new Error(errorData.message || 'Failed to create pack.');
+        await toastApiError(response, 'Impossible de créer le pack');
+        return false;
       }
 
-      await fetchPacks(); // Refresh the list of packs after creation
+      toast.success('Pack créé avec succès');
+      await fetchPacks();
       return true;
     } catch (err) {
-      console.error("Create Pack Error:", err);
+      toastNetworkError(err);
       return false;
     }
   };
 
   /**
    * Updates an existing pack using its ID and FormData.
-   * @param {string} id - The ID of the pack to update.
-   * @param {FormData} formData - The updated data for the pack.
-   * @returns {Promise<boolean>} - True if the update was successful, false otherwise.
    */
   const updatePack = async (id: string, formData: FormData): Promise<boolean> => {
     try {
       const response = await fetch(`/api/proxy/packs/${id}`, {
         method: 'PATCH',
-        body: formData,
+        body:   formData,
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to update pack.');
+        await toastApiError(response, 'Impossible de modifier le pack');
+        return false;
       }
 
-      await fetchPacks(); // Refresh the list after updating
+      toast.success('Pack mis à jour');
+      await fetchPacks();
       return true;
     } catch (err) {
-      console.error("Update Pack Error:", err);
+      toastNetworkError(err);
       return false;
     }
   };
 
   /**
    * Deletes a pack by its ID.
-   * @param {string} id - The ID of the pack to delete.
-   * @returns {Promise<boolean>} - True if deletion was successful, false otherwise.
    */
   const deletePack = async (id: string): Promise<boolean> => {
     try {
@@ -139,20 +140,20 @@ export const usePacks = () => {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to delete pack.');
+        await toastApiError(response, 'Impossible de supprimer le pack');
+        return false;
       }
 
-      // Instead of refetching, we can filter the state for a faster UI update.
+      toast.success('Pack supprimé');
+      // Optimistic local removal for instant UI feedback
       setPacks(prevPacks => prevPacks.filter(pack => pack._id !== id));
       return true;
     } catch (err) {
-      console.error("Delete Pack Error:", err);
+      toastNetworkError(err);
       return false;
     }
   };
 
-  // Expose the state and action functions to the component.
   return {
     packs,
     isLoading,
@@ -160,6 +161,6 @@ export const usePacks = () => {
     createPack,
     updatePack,
     deletePack,
-    refetchPacks: fetchPacks 
+    refetchPacks: fetchPacks,
   };
 };
