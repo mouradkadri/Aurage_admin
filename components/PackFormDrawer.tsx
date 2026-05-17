@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { UploadCloud, X, Loader2, DollarSign, Info, Trash2, PackagePlus, Plus } from 'lucide-react';
+import { UploadCloud, X, Loader2, DollarSign, Info, Trash2, PackagePlus, Plus, AlertTriangle } from 'lucide-react';
 import { Pack } from '@/hooks/usePacks';
 import { useProducts } from '@/hooks/useProducts';
 
@@ -37,10 +37,7 @@ interface BilingualField {
 
 const DESC_MAX_LENGTH = 500;
 
-// ─── Bilingual input — defined OUTSIDE the drawer component so its identity
-//     is stable across renders. Defining it inside would cause React to treat
-//     it as a new component type on every keystroke, unmounting the input and
-//     losing focus after each character. ─────────────────────────────────────
+// ─── Bilingual input — defined OUTSIDE so identity is stable across renders ──
 
 interface BilingualInputProps {
   label: string;
@@ -52,12 +49,7 @@ interface BilingualInputProps {
 }
 
 const BilingualInput: React.FC<BilingualInputProps> = ({
-  label,
-  field,
-  onChange,
-  multiline = false,
-  required = false,
-  placeholder,
+  label, field, onChange, multiline = false, required = false, placeholder,
 }) => (
   <div className="space-y-2">
     <Label>{label}</Label>
@@ -93,32 +85,40 @@ const BilingualInput: React.FC<BilingualInputProps> = ({
 // ─── Main drawer ──────────────────────────────────────────────────────────────
 
 export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
-  isOpen,
-  onClose,
-  onSubmit,
-  initialData,
+  isOpen, onClose, onSubmit, initialData,
 }) => {
   const { products } = useProducts();
 
-  const [isSubmitting, setIsSubmitting]   = useState(false);
-  const [imageItem, setImageItem]         = useState<ImageItem | null>(null);
-  const [contentItems, setContentItems]   = useState<ContentItem[]>([]);
-  const fileInputRef                      = useRef<HTMLInputElement>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageItem, setImageItem]       = useState<ImageItem | null>(null);
+  const [contentItems, setContentItems] = useState<ContentItem[]>([]);
+  const fileInputRef                    = useRef<HTMLInputElement>(null);
 
   const [name, setName]               = useState<BilingualField>({ en: '', fr: '' });
   const [description, setDescription] = useState<BilingualField>({ en: '', fr: '' });
+  const [formData, setFormData]       = useState({ price: '', is_active: true });
 
-  const [formData, setFormData] = useState({
-    price:     '',
-    is_active: true,
-  });
+  // ── Duplicate detection ────────────────────────────────────────────────────
+  // Build a set of product IDs that appear more than once in contentItems.
+  // Recomputed on every contentItems change — cheap since packs are small.
+  const duplicateIds = React.useMemo(() => {
+    const seen  = new Set<string>();
+    const dupes = new Set<string>();
+    for (const item of contentItems) {
+      if (!item.product) continue;
+      if (seen.has(item.product)) dupes.add(item.product);
+      else seen.add(item.product);
+    }
+    return dupes;
+  }, [contentItems]);
 
-  const handleNameChange = (locale: 'en' | 'fr', value: string) =>
-    setName(prev => ({ ...prev, [locale]: value }));
+  const hasDuplicates = duplicateIds.size > 0;
 
-  const handleDescriptionChange = (locale: 'en' | 'fr', value: string) =>
-    setDescription(prev => ({ ...prev, [locale]: value }));
+  // ── Stable onChange handlers ───────────────────────────────────────────────
+  const handleNameChange        = (locale: 'en' | 'fr', value: string) => setName(prev => ({ ...prev, [locale]: value }));
+  const handleDescriptionChange = (locale: 'en' | 'fr', value: string) => setDescription(prev => ({ ...prev, [locale]: value }));
 
+  // ── Populate on open ───────────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
@@ -130,10 +130,7 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
           en: typeof initialData.description === 'object' ? (initialData.description as BilingualField).en ?? '' : initialData.description ?? '',
           fr: typeof initialData.description === 'object' ? (initialData.description as BilingualField).fr ?? '' : '',
         });
-        setFormData({
-          price:     initialData.price?.toString() ?? '',
-          is_active: initialData.is_active ?? true,
-        });
+        setFormData({ price: initialData.price?.toString() ?? '', is_active: initialData.is_active ?? true });
         setImageItem(initialData.image ? { url: initialData.image.url, isNew: false } : null);
         setContentItems(
           (initialData.content ?? []).map(item => ({
@@ -155,6 +152,7 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
     setContentItems([]);
   };
 
+  // ── Image handlers ─────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
@@ -167,6 +165,7 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
     setImageItem(null);
   };
 
+  // ── Content handlers ───────────────────────────────────────────────────────
   const addContentItem = () =>
     setContentItems(prev => [...prev, { tempId: Math.random().toString(36), product: '' }]);
 
@@ -176,11 +175,18 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
   const removeContentItem = (tempId: string) =>
     setContentItems(prev => prev.filter(item => item.tempId !== tempId));
 
+  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (contentItems.some(item => !item.product)) {
-      alert('Please ensure a product is selected for every item in the pack.');
+      alert('Please ensure a product is selected for every row.');
+      return;
+    }
+
+    // Block submit if duplicates exist — belt-and-suspenders beyond the warning
+    if (hasDuplicates) {
+      alert('Remove duplicate products before saving.');
       return;
     }
 
@@ -193,16 +199,19 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
     data.append('description[fr]', description.fr);
     data.append('price',     formData.price);
     data.append('is_active', String(formData.is_active));
-
-    if (imageItem?.isNew && imageItem.file) {
-      data.append('image', imageItem.file);
-    }
-
+    if (imageItem?.isNew && imageItem.file) data.append('image', imageItem.file);
     data.append('content', JSON.stringify(contentItems.map(({ product }) => ({ product }))));
 
     const success = await onSubmit(data);
     if (success) onClose();
     setIsSubmitting(false);
+  };
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const getProductName = (id: string) => {
+    const p = products.find(p => p._id === id);
+    if (!p) return id;
+    return typeof p.name === 'object' ? (p.name as { en?: string; fr?: string }).en ?? id : p.name;
   };
 
   return (
@@ -218,7 +227,6 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
           </SheetDescription>
         </SheetHeader>
 
-        {/* FIX 1: sheet-scroll-body class + pb-32 so content scrolls above keyboard */}
         <div className="sheet-scroll-body flex-1 overflow-y-auto p-8 pb-32 custom-scrollbar">
           <form id="pack-form" onSubmit={handleSubmit} className="space-y-8">
 
@@ -229,18 +237,12 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
                 <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Pack Details</h3>
               </div>
 
-              <BilingualInput
-                label="Pack Name"
-                field={name}
-                onChange={handleNameChange}
-                required
-              />
+              <BilingualInput label="Pack Name" field={name} onChange={handleNameChange} required />
 
               <div>
                 <Label>Price</Label>
                 <div className="relative">
                   <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                  {/* FIX 2: inputMode="decimal" → decimal numeric pad on mobile */}
                   <Input
                     required
                     type="number"
@@ -254,12 +256,7 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
                 </div>
               </div>
 
-              <BilingualInput
-                label="Description"
-                field={description}
-                onChange={handleDescriptionChange}
-                multiline
-              />
+              <BilingualInput label="Description" field={description} onChange={handleDescriptionChange} multiline />
 
               <div className="flex items-center justify-between p-4 rounded-xl border bg-zinc-50 dark:bg-zinc-950/50">
                 <Label>Make Pack Active</Label>
@@ -282,38 +279,90 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
                 </Button>
               </div>
 
-              <div className="space-y-3">
-                {contentItems.map(item => (
-                  <div key={item.tempId} className="grid grid-cols-12 gap-2 items-center p-3 rounded-lg border bg-zinc-50 dark:bg-zinc-950/50">
-                    <div className="col-span-10">
-                      <Select
-                        required
-                        value={item.product}
-                        onValueChange={value => updateContentItem(item.tempId, value)}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Select Product…" /></SelectTrigger>
-                        <SelectContent>
-                          {products.map(p => (
-                            <SelectItem key={p._id} value={p._id}>
-                              {typeof p.name === 'object' ? (p.name as { en?: string; fr?: string }).en ?? p._id : p.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-2 flex justify-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="text-red-500 hover:text-red-600"
-                        onClick={() => removeContentItem(item.tempId)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+              {/*
+                DUPLICATE WARNING BANNER
+                Appears as soon as the same product ID is selected twice.
+                Lists each duplicated product name so the admin knows exactly
+                which row to fix. Disappears immediately once resolved.
+              */}
+              {hasDuplicates && (
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                      Duplicate product{duplicateIds.size > 1 ? 's' : ''} detected
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                      {Array.from(duplicateIds).map(id => getProductName(id)).join(', ')} —
+                      {' '}remove the extra row{duplicateIds.size > 1 ? 's' : ''} before saving.
+                    </p>
                   </div>
-                ))}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {contentItems.map(item => {
+                  const isDupe = item.product ? duplicateIds.has(item.product) : false;
+                  return (
+                    <div
+                      key={item.tempId}
+                      className={`
+                        grid grid-cols-12 gap-2 items-center p-3 rounded-lg border
+                        transition-colors
+                        ${isDupe
+                          ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700'
+                          : 'bg-zinc-50 dark:bg-zinc-950/50 border-zinc-200 dark:border-zinc-800'
+                        }
+                      `}
+                    >
+                      <div className="col-span-10">
+                        <Select
+                          required
+                          value={item.product}
+                          onValueChange={value => updateContentItem(item.tempId, value)}
+                        >
+                          <SelectTrigger className={isDupe ? 'border-amber-400 dark:border-amber-600' : ''}>
+                            <SelectValue placeholder="Select Product…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {products.map(p => {
+                              const pName = typeof p.name === 'object'
+                                ? (p.name as { en?: string; fr?: string }).en ?? p._id
+                                : p.name;
+                              // Mark options that are already selected elsewhere
+                              const alreadyUsed = contentItems.some(
+                                ci => ci.product === p._id && ci.tempId !== item.tempId
+                              );
+                              return (
+                                <SelectItem key={p._id} value={p._id}>
+                                  <span className="flex items-center gap-2">
+                                    {pName}
+                                    {alreadyUsed && (
+                                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
+                                        déjà ajouté
+                                      </span>
+                                    )}
+                                  </span>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="col-span-2 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:text-red-600"
+                          onClick={() => removeContentItem(item.tempId)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
                 {contentItems.length === 0 && (
                   <p className="text-center text-sm text-zinc-500 py-4">
                     This pack is empty. Add a product to get started.
@@ -357,8 +406,6 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
           </form>
         </div>
 
-        {/* FIX 3: lg:sticky so footer flows naturally on mobile (no keyboard clash)
-                  but stays pinned on desktop where there is no soft keyboard */}
         <SheetFooter className="px-8 py-5 border-t bg-white dark:bg-zinc-950 lg:sticky lg:bottom-0 lg:z-10">
           <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
             Cancel
@@ -366,8 +413,8 @@ export const PackFormDrawer: React.FC<PackFormDrawerProps> = ({
           <Button
             type="submit"
             form="pack-form"
-            disabled={isSubmitting}
-            className="bg-amber-500 hover:bg-amber-600 text-white"
+            disabled={isSubmitting || hasDuplicates}
+            className="bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50"
           >
             {isSubmitting
               ? <Loader2 className="w-4 h-4 animate-spin" />
