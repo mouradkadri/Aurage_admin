@@ -5,36 +5,43 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Bell, Lock, Palette, ShoppingCart, Mail, User } from 'lucide-react';
+import { Bell, Lock, Palette, ShoppingCart, Mail, User, AlertTriangle } from 'lucide-react';
+
+const ComingSoonBanner = () => (
+  <div className="mx-6 mb-2 flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-lg px-3 py-2">
+    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+    <span>Changes here are not yet synced to the backend — coming soon.</span>
+  </div>
+);
 
 export const SettingsSection: React.FC = () => {
   const [notifications, setNotifications] = useState({
-    orderUpdates: true,
-    lowStock: true,
-    newCustomers: false,
+    orderUpdates:    true,
+    lowStock:        true,
+    newCustomers:    false,
     marketingEmails: false,
   });
 
   const [shopSettings, setShopSettings] = useState({
     storeName: 'Aurage Fragrances',
-    email: 'admin@auragefragrances.com',
-    currency: 'EUR',
-    timezone: 'UTC+1',
+    email:     'admin@auragefragrances.com',
+    currency:  'EUR',
+    timezone:  'UTC+1',
   });
 
   const handleNotificationChange = (key: keyof typeof notifications) => {
-    setNotifications(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
+    setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   return (
     <div className="space-y-6 max-w-4xl">
+
       {/* Header */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Dashboard Settings</h3>
-        <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">Manage your store configuration and preferences</p>
+        <p className="text-sm text-gray-600 dark:text-zinc-400 mt-1">
+          Manage your store configuration and preferences
+        </p>
       </div>
 
       {/* Store Settings */}
@@ -44,33 +51,44 @@ export const SettingsSection: React.FC = () => {
             <ShoppingCart className="w-5 h-5" />
             Store Information
           </CardTitle>
-          <CardDescription className="text-gray-600 dark:text-zinc-400">Basic store configuration</CardDescription>
+          <CardDescription className="text-gray-600 dark:text-zinc-400">
+            Basic store configuration
+          </CardDescription>
         </CardHeader>
+
+        <ComingSoonBanner />
+
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">Store Name</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">
+                Store Name
+              </label>
               <input
                 type="text"
                 value={shopSettings.storeName}
-                onChange={(e) => setShopSettings(prev => ({ ...prev, storeName: e.target.value }))}
+                onChange={e => setShopSettings(prev => ({ ...prev, storeName: e.target.value }))}
                 className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">Email</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">
+                Email
+              </label>
               <input
                 type="email"
                 value={shopSettings.email}
-                onChange={(e) => setShopSettings(prev => ({ ...prev, email: e.target.value }))}
+                onChange={e => setShopSettings(prev => ({ ...prev, email: e.target.value }))}
                 className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">Currency</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">
+                Currency
+              </label>
               <select
                 value={shopSettings.currency}
-                onChange={(e) => setShopSettings(prev => ({ ...prev, currency: e.target.value }))}
+                onChange={e => setShopSettings(prev => ({ ...prev, currency: e.target.value }))}
                 className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
                 <option>EUR</option>
@@ -80,10 +98,12 @@ export const SettingsSection: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">Timezone</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">
+                Timezone
+              </label>
               <select
                 value={shopSettings.timezone}
-                onChange={(e) => setShopSettings(prev => ({ ...prev, timezone: e.target.value }))}
+                onChange={e => setShopSettings(prev => ({ ...prev, timezone: e.target.value }))}
                 className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
                 <option>UTC+0</option>
@@ -93,7 +113,14 @@ export const SettingsSection: React.FC = () => {
               </select>
             </div>
           </div>
-          <Button className="bg-amber-500 hover:bg-amber-600 text-white">Save Store Settings</Button>
+
+          <Button
+            disabled
+            title="Settings sync coming soon"
+            className="bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Save Store Settings
+          </Button>
         </CardContent>
       </Card>
 
@@ -104,31 +131,39 @@ export const SettingsSection: React.FC = () => {
             <Bell className="w-5 h-5" />
             Notifications
           </CardTitle>
-          <CardDescription className="text-gray-600 dark:text-zinc-400">Configure which notifications you want to receive</CardDescription>
+          <CardDescription className="text-gray-600 dark:text-zinc-400">
+            Configure which notifications you want to receive
+          </CardDescription>
         </CardHeader>
+
+        <ComingSoonBanner />
+
         <CardContent className="space-y-4">
-          {[
-            { key: 'orderUpdates', label: 'Order Updates', description: 'Get notified when customers place or update orders' },
-            { key: 'lowStock', label: 'Low Stock Alerts', description: 'Receive alerts when products are running low' },
-            { key: 'newCustomers', label: 'New Customers', description: 'Notifications for new customer registrations' },
+          {([
+            { key: 'orderUpdates',    label: 'Order Updates',    description: 'Get notified when customers place or update orders' },
+            { key: 'lowStock',        label: 'Low Stock Alerts', description: 'Receive alerts when products are running low' },
+            { key: 'newCustomers',    label: 'New Customers',    description: 'Notifications for new customer registrations' },
             { key: 'marketingEmails', label: 'Marketing Emails', description: 'Promotional campaigns and newsletters' },
-          ].map(({ key, label, description }) => (
-            <div key={key} className="flex items-start justify-between p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-lg">
+          ] as const).map(({ key, label, description }) => (
+            <div
+              key={key}
+              className="flex items-start justify-between p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-lg"
+            >
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
                 <p className="text-xs text-gray-600 dark:text-zinc-400 mt-1">{description}</p>
               </div>
               <button
-                onClick={() => handleNotificationChange(key as keyof typeof notifications)}
+                onClick={() => handleNotificationChange(key)}
                 className={`ml-4 relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  notifications[key as keyof typeof notifications]
+                  notifications[key]
                     ? 'bg-amber-500'
                     : 'bg-gray-300 dark:bg-zinc-700'
                 }`}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    notifications[key as keyof typeof notifications] ? 'translate-x-6' : 'translate-x-1'
+                    notifications[key] ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>
@@ -144,23 +179,37 @@ export const SettingsSection: React.FC = () => {
             <Lock className="w-5 h-5" />
             Security
           </CardTitle>
-          <CardDescription className="text-gray-600 dark:text-zinc-400">Account security and login management</CardDescription>
+          <CardDescription className="text-gray-600 dark:text-zinc-400">
+            Account security and login management
+          </CardDescription>
         </CardHeader>
+
+        <ComingSoonBanner />
+
         <CardContent className="space-y-4">
           <div className="p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-lg flex items-start justify-between">
             <div className="flex-1">
               <p className="text-sm font-medium text-gray-900 dark:text-white">Password</p>
               <p className="text-xs text-gray-600 dark:text-zinc-400 mt-1">Last changed 45 days ago</p>
             </div>
-            <Button variant="outline" className="border-gray-300 dark:border-zinc-700 text-xs">
+            <Button
+              disabled
+              variant="outline"
+              title="Coming soon"
+              className="border-gray-300 dark:border-zinc-700 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               Change Password
             </Button>
           </div>
 
           <div className="p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-lg flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-900 dark:text-white">Two-Factor Authentication</p>
-              <p className="text-xs text-gray-600 dark:text-zinc-400 mt-1">Enhance your account security</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                Two-Factor Authentication
+              </p>
+              <p className="text-xs text-gray-600 dark:text-zinc-400 mt-1">
+                Enhance your account security
+              </p>
             </div>
             <Badge variant="secondary" className="text-xs">Disabled</Badge>
           </div>
@@ -170,7 +219,12 @@ export const SettingsSection: React.FC = () => {
               <p className="text-sm font-medium text-gray-900 dark:text-white">Active Sessions</p>
               <p className="text-xs text-gray-600 dark:text-zinc-400 mt-1">1 active session(s)</p>
             </div>
-            <Button variant="outline" className="border-gray-300 dark:border-zinc-700 text-xs">
+            <Button
+              disabled
+              variant="outline"
+              title="Coming soon"
+              className="border-gray-300 dark:border-zinc-700 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               Manage Sessions
             </Button>
           </div>
@@ -184,12 +238,19 @@ export const SettingsSection: React.FC = () => {
             <User className="w-5 h-5" />
             Account Information
           </CardTitle>
-          <CardDescription className="text-gray-600 dark:text-zinc-400">Your admin profile details</CardDescription>
+          <CardDescription className="text-gray-600 dark:text-zinc-400">
+            Your admin profile details
+          </CardDescription>
         </CardHeader>
+
+        <ComingSoonBanner />
+
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">Full Name</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">
+                Full Name
+              </label>
               <input
                 type="text"
                 defaultValue="Aurage Admin"
@@ -197,7 +258,9 @@ export const SettingsSection: React.FC = () => {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">Role</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-zinc-300 block mb-2">
+                Role
+              </label>
               <input
                 type="text"
                 defaultValue="Store Owner"
@@ -206,9 +269,17 @@ export const SettingsSection: React.FC = () => {
               />
             </div>
           </div>
-          <Button className="bg-amber-500 hover:bg-amber-600 text-white">Update Profile</Button>
+
+          <Button
+            disabled
+            title="Profile sync coming soon"
+            className="bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Update Profile
+          </Button>
         </CardContent>
       </Card>
+
     </div>
   );
 };

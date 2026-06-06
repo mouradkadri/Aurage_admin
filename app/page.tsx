@@ -11,6 +11,7 @@ import { OrdersSection } from '@/components/orders-section';
 import { StorefrontSection } from '@/components/storefront-section';
 import { SettingsSection } from '@/components/settings-section';
 import { CommandPalette } from '@/components/CommandPalette';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Search } from 'lucide-react';
 
 const sectionTitles: Record<string, string> = {
@@ -39,16 +40,24 @@ export default function Dashboard() {
   }, []);
 
   const renderSection = () => {
-    switch (activeSection) {
-      case 'analytics':   return <AnalyticsSection />;
-      case 'products':    return <ProductsSection />;
-      case 'packs':       return <PacksSection />;
-      case 'collections': return <CollectionsSection />;
-      case 'orders':      return <OrdersSection />;
-      case 'storefront':  return <StorefrontSection />;
-      case 'settings':    return <SettingsSection />;
-      default:            return <AnalyticsSection />;
-    }
+    const sections: Record<string, React.ReactNode> = {
+      analytics:   <AnalyticsSection />,
+      products:    <ProductsSection />,
+      packs:       <PacksSection />,
+      collections: <CollectionsSection />,
+      orders:      <OrdersSection />,
+      storefront:  <StorefrontSection />,
+      settings:    <SettingsSection />,
+    };
+
+    const section = sections[activeSection] ?? <AnalyticsSection />;
+    const name    = sectionTitles[activeSection] ?? 'Section';
+
+    return (
+      <ErrorBoundary sectionName={name} key={activeSection}>
+        {section}
+      </ErrorBoundary>
+    );
   };
 
   return (
@@ -63,13 +72,12 @@ export default function Dashboard() {
       <div className="flex flex-col flex-1 overflow-hidden w-full">
 
         {/* ── Mobile header bar (below lg) ──────────────────────────────────── */}
-        {/* Four zones: hamburger | breadcrumb (flex-1) | search tap | actions  */}
         <div className="flex items-center gap-2 lg:hidden h-14 bg-white dark:bg-zinc-950 border-b border-gray-200 dark:border-zinc-800 px-3 flex-shrink-0">
 
           {/* Hamburger / mobile sidebar trigger */}
           <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
 
-          {/* Breadcrumb — grows to fill space, truncates long section names */}
+          {/* Breadcrumb */}
           <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
             <span className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest flex-shrink-0">
               Aurage
@@ -80,7 +88,7 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {/* Search button — opens command palette on tap */}
+          {/* Search button */}
           <button
             onClick={() => setPaletteOpen(true)}
             aria-label="Search sections"
@@ -89,11 +97,11 @@ export default function Dashboard() {
             <Search className="w-4 h-4" />
           </button>
 
-          {/* Theme toggle + notifications bell + user dropdown */}
+          {/* Theme toggle + notifications + user dropdown */}
           <HeaderActions isMobile />
         </div>
 
-        {/* Desktop Header (hidden on mobile) */}
+        {/* Desktop Header */}
         <div className="hidden lg:block">
           <Header sectionTitle={sectionTitles[activeSection]} />
         </div>
@@ -106,7 +114,7 @@ export default function Dashboard() {
         </main>
       </div>
 
-      {/* Command Palette — controlled externally, works on all screen sizes */}
+      {/* Command Palette */}
       {paletteOpen && (
         <CommandPalette
           activeSection={activeSection}

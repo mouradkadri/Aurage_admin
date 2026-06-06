@@ -16,7 +16,6 @@ const SECTIONS = [
 interface CommandPaletteProps {
   activeSection: string;
   onSelect: (id: string) => void;
-  /** When provided, CommandPalette is controlled externally and always renders open. */
   onClose?: () => void;
 }
 
@@ -25,24 +24,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSelect,
   onClose,
 }) => {
-  // If onClose is provided, we're controlled externally and should render open immediately.
-  // Otherwise we manage our own open state (triggered by ⌘K).
   const isControlled = typeof onClose === 'function';
 
-  const [open, setOpen]       = useState(isControlled); // start open when controlled
+  const [open, setOpen]       = useState(isControlled);
   const [search, setSearch]   = useState('');
   const [focused, setFocused] = useState(0);
   const inputRef              = useRef<HTMLInputElement>(null);
 
   const close = () => {
-    if (isControlled) {
-      onClose?.();
-    } else {
-      setOpen(false);
-    }
+    if (isControlled) onClose?.();
+    else setOpen(false);
   };
 
-  // Standalone mode: open/close with Cmd+K or Ctrl+K
   useEffect(() => {
     if (isControlled) return;
     const handler = (e: KeyboardEvent) => {
@@ -56,7 +49,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return () => document.removeEventListener('keydown', handler);
   }, [isControlled]);
 
-  // Focus input when opened
   useEffect(() => {
     const isVisible = isControlled ? true : open;
     if (isVisible) {
@@ -66,7 +58,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
   }, [open, isControlled]);
 
-  // Escape key for controlled mode
   useEffect(() => {
     if (!isControlled) return;
     const handler = (e: KeyboardEvent) => {
@@ -120,11 +111,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             value={search}
             onChange={e => setSearch(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Aller à une section…"
+            placeholder="Go to a section..."
             className="flex-1 bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-500 outline-none"
           />
           <kbd className="text-[10px] text-gray-400 bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded font-mono flex-shrink-0">
-            Échap
+            Esc
           </kbd>
         </div>
 
@@ -132,7 +123,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         <ul className="py-2 max-h-72 overflow-y-auto">
           {filtered.length === 0 ? (
             <li className="px-4 py-8 text-center text-sm text-gray-400 dark:text-zinc-500">
-              Aucune section trouvée
+              No sections found
             </li>
           ) : (
             filtered.map((section, index) => {
@@ -143,10 +134,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               return (
                 <li key={section.id}>
                   <button
-                    onClick={() => {
-                      onSelect(section.id);
-                      close();
-                    }}
+                    onClick={() => { onSelect(section.id); close(); }}
                     onMouseEnter={() => setFocused(index)}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
                       isFocused
@@ -160,7 +148,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     <span className="flex-1">{section.label}</span>
                     {isActive && (
                       <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold uppercase tracking-wide bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
-                        Actif
+                        Active
                       </span>
                     )}
                     {isFocused && !isActive && (
@@ -175,19 +163,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           )}
         </ul>
 
-        {/* Footer hint */}
+        {/* Footer hints */}
         <div className="px-4 py-2 border-t border-gray-100 dark:border-zinc-800 flex items-center gap-4">
           <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-zinc-500">
             <kbd className="bg-gray-100 dark:bg-zinc-800 px-1 rounded font-mono text-[10px]">↑↓</kbd>
-            naviguer
+            navigate
           </span>
           <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-zinc-500">
             <kbd className="bg-gray-100 dark:bg-zinc-800 px-1 rounded font-mono text-[10px]">↵</kbd>
-            sélectionner
+            select
           </span>
           <span className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-zinc-500">
-            <kbd className="bg-gray-100 dark:bg-zinc-800 px-1 rounded font-mono text-[10px]">Échap</kbd>
-            fermer
+            <kbd className="bg-gray-100 dark:bg-zinc-800 px-1 rounded font-mono text-[10px]">Esc</kbd>
+            close
           </span>
         </div>
       </div>
